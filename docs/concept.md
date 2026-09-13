@@ -121,13 +121,14 @@ The extension does not create persistent tool-output history.
 ### Next
 
 1. Test long output, repeated tools, multiple chats, cancellation, and unavailable results.
-2. Improve UI of resultdisplay.
-3. Add option to display params for the toolcall.
-4. Add adapter tests for reference extraction and result lookup.
-5. Add position tests for repeated tool names and missing rendered labels.
-6. Refresh positions after relevant buffer changes, not only checkpoints.
-7. Improve float lifecycle, including replacing or closing an existing result window.
-8. Add `<Esc>` close behavior and configurable UI options.
-9. Add native UI fallback if the CodeCompanion helper changes or disappears.
-10. Document supported CodeCompanion versions.
-11. Add mouse or hover interaction if cursor behavior remains stable.
+2. Add keybinds to navigate between toolresults.
+3. Improve UI of resultdisplay.
+4. Add option to display params for the toolcall.
+5. Add adapter tests for reference extraction and result lookup.
+6. Add position tests for repeated tool names and missing rendered labels.
+7. Refresh positions after relevant buffer changes, not only checkpoints.
+8. Improve float lifecycle, including replacing or closing an existing result window.
+9. Add `<Esc>` close behavior and configurable UI options.
+10. Add native UI fallback if the CodeCompanion helper changes or disappears.
+11. Document supported CodeCompanion versions.
+12. Add mouse or hover interaction if cursor behavior remains stable.
