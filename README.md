@@ -12,6 +12,7 @@ Early development. Current implementation supports:
 - Per-chat tool-call observation.
 - Partial lookup in batched calls.
 - Cursor-based lookup with `gT`.
+- Configurable cursor navigation with `gtn` and `gtp`.
 - Result display in a floating window.
 - Inheriting CodeCompanions floating-window dimensions and options.
 
@@ -25,19 +26,21 @@ extensions = {
     enabled = true,
     opts = {
       keymap = "gT",
+      next_keymap = "gtn",
+      previous_keymap = "gtp",
     },
   },
 },
 ````
 
-`gT` is enabled by default. Disable it with `keymap = false`.
+`gT` displays result under cursor. `gtn` moves to next rendered tool-call line; `gtp` moves to previous. Set either navigation option to `false` to disable it.
 
 ## Usage
 
 1. Open a CodeCompanion chat.
 2. Allow one or more tools to run.
 3. Move the cursor to a rendered tool-call line, such as `run_command: date`.
-4. Press `gT`.
+4. Press `gT` to display its result. Use `gtn` to move to the next tool-call line or `gtp` to move to the previous one.
 
 The current result opens in a floating window. The result is looked up from CodeCompanion's current message stack when requested; this extension does not maintain a second output history.
 This means it will match CodeCompanions context management.
@@ -47,6 +50,8 @@ This means it will match CodeCompanions context management.
 | Option | Default | Description |
 | --- | --- | --- |
 | `keymap` | `"gT"` | Chat-buffer keymap for displaying a result. Set to `false` to disable. |
+| `next_keymap` | `"gtn"` | Chat-buffer keymap for moving to next tool result. Set to `false` to disable. |
+| `previous_keymap` | `"gtp"` | Chat-buffer keymap for moving to previous tool result. Set to `false` to disable. |
 | `debug` | `false` | Enable lifecycle and reference logging. |
 | `debug_buffer` | `false` | Log rendered chat-buffer lines and calculated positions. |
 

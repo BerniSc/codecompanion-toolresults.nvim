@@ -12,6 +12,8 @@ local defaults = {
   debug = false,
   debug_buffer = false,
   keymap = "gT",
+  next_keymap = "gtn",
+  previous_keymap = "gtp",
 }
 
 --- --------------------
@@ -169,6 +171,38 @@ end
 --- Display
 --- --------------------
 
+---Move the cursor to the next or previous rendered tool reference.
+---@param chat_state table Per-chat extension state.
+---@param direction integer 1 for next, -1 for previous.
+---@return nil
+local function navigate_tool_reference(chat_state, direction)
+  refresh_positions(chat_state)
+
+  -- 1-based line coordinate of cursor in current window
+  local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+  local scroll_target
+
+  -- TODO Maybe add wrapping? Also, consider - over the space of using it - whether we should CENTER on the cursor as well.
+  --
+  -- References are appended in message-order. This means if we want "next line after cursor" we need to exit on first match.
+  -- Maybe we could exit early as well for "backwards" search, but for now this is (with O(n)) each call efficient enough for me.
+  for _, reference in ipairs(chat_state.references) do
+    if reference.line and ((direction > 0 and reference.line > cursor_line) or (direction < 0 and reference.line < cursor_line)) then
+      scroll_target = reference
+      if direction > 0 then
+        break
+      end
+    end
+  end
+
+  if not scroll_target or not scroll_target.line then
+    vim.notify(direction > 0 and "No next tool result" or "No previous tool result", vim.log.levels.INFO)
+    return
+  end
+
+  vim.api.nvim_win_set_cursor(0, { scroll_target.line, 0 })
+end
+
 ---Display the current tool result under the cursor.
 ---@param chat_state table Per-chat extension state.
 ---@return nil
@@ -325,9 +359,11 @@ function M.setup(opts)
   M._opts = vim.tbl_deep_extend("force", defaults, opts or {})
   configured = true
 
-  -- Should attach keymap?
+  -- base keymaps
+  local chat_keymaps = require("codecompanion.config").interactions.chat.keymaps
+
+  -- if the main keymap is set merge it and set it up
   if M._opts.keymap then
-    local chat_keymaps = require("codecompanion.config").interactions.chat.keymaps
     chat_keymaps.display_toolresults = {
       modes = { n = M._opts.keymap, },
       description = "Display tool result under cursor",
@@ -337,13 +373,45 @@ function M.setup(opts)
         local current_state = state_by_bufnr[vim.api.nvim_get_current_buf()]
 
         if current_state then
-          -- Handles non-tc locations itsself gracefully
+          -- Handles non-tool locations itself gracefully.
           display_tool_reference(current_state)
         else
           vim.notify("No tracked CodeCompanion chat", vim.log.levels.INFO)
         end
       end,
     }
+  end
+
+  local navigation_keymaps = {
+    next_toolresult = {
+      keymap = M._opts.next_keymap,
+      direction = 1,
+      description = "Go to next tool result",
+    },
+    previous_toolresult = {
+      keymap = M._opts.previous_keymap,
+      direction = -1,
+      description = "Go to previous tool result",
+    },
+  }
+
+  -- setup every navigation keymap that is set
+  for name, navigation in pairs(navigation_keymaps) do
+    if navigation.keymap then
+      chat_keymaps[name] = {
+        modes = { n = navigation.keymap },
+        description = navigation.description,
+        callback = function()
+          local current_state = state_by_bufnr[vim.api.nvim_get_current_buf()]
+
+          if current_state then
+            navigate_tool_reference(current_state, navigation.direction)
+          else
+            vim.notify("No tracked CodeCompanion chat", vim.log.levels.INFO)
+          end
+        end,
+      }
+    end
   end
 
   -- Attach monitoring to new chat instances
