@@ -3,26 +3,17 @@
 ---@field exports? table Functions exposed via codecompanion.extensions.toolresults
 local Toolresults = {}
 
----Setup the extension
+---Setup the extension. Thin wrapper with interface for CodeCompanion loading from custom namespace
 ---@param opts table Configuration options
 function Toolresults.setup(opts)
-  -- Init extension
-  local chat_keymaps = require("codecompanion.config").interactions.chat.keymaps
-
-  chat_keymaps.display_toolresults = {
-    modes = {
-      n = opts.keymap or "gT",
-    },
-    description = "Display toolresult under cursor",
-    callback = function(chat)
-        vim.notify("Displaying toolresult in chat " .. chat.id)
-    end
-  }
+  require("codecompanion_toolresults").setup(opts)
 end
 
--- Functions exposed via codecompanion.extensions.toolresults
+-- Functions exposed via codecompanion.extensions.toolresults.XXX
 Toolresults.exports = {
-
+  state = function()
+    return require("codecompanion_toolresults").state()
+  end,
 }
 
 return Toolresults
