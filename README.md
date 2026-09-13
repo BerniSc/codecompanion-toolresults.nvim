@@ -52,6 +52,7 @@ This means it will match CodeCompanions context management.
 | `keymap` | `"gT"` | Chat-buffer keymap for displaying a result. Set to `false` to disable. |
 | `next_keymap` | `"gtn"` | Chat-buffer keymap for moving to next tool result. Set to `false` to disable. |
 | `previous_keymap` | `"gtp"` | Chat-buffer keymap for moving to previous tool result. Set to `false` to disable. |
+| `run_command_language` | `"bash"` | Language label for displayed `run_command` commands. Set to another shell or `false`; default is only a display label, not a shell assumption. |
 | `debug` | `false` | Enable lifecycle and reference logging. |
 | `debug_buffer` | `false` | Log rendered chat-buffer lines and calculated positions. |
 
@@ -70,4 +71,6 @@ See [`docs/concept.md`](docs/concept.md) for detailed design, data flow, boundar
 The extension uses CodeCompanion's chat callbacks and message structure. It also uses the internal `codecompanion.utils.ui.create_float` helper to match CodeCompanion's floating-window behavior. That dependency is isolated in `lua/codecompanion_toolresults/adapters/ui.lua`.
 
 CodeCompanion changes may require adapter updates.
+
+`run_command` formatting uses a local display-only code-fence formatter and does not assume a shell for execution.
 

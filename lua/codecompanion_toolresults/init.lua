@@ -14,6 +14,7 @@ local defaults = {
   keymap = "gT",
   next_keymap = "gtn",
   previous_keymap = "gtp",
+  run_command_language = "bash", -- Display command snippets as bash; change label or set false to keep raw output.
 }
 
 --- --------------------
@@ -203,6 +204,46 @@ local function navigate_tool_reference(chat_state, direction)
   vim.api.nvim_win_set_cursor(0, { scroll_target.line, 0 })
 end
 
+---Format content as a fenced Markdown code block.
+---
+---Use at least four backticks and grow fence length when content contains
+---longer backtick runs, so embedded Markdown remains literal.
+---@param content any Content to format.
+---@param language? string Optional fence language label.
+---@return string Markdown code block.
+local function format_codeblock(content, language)
+  content = tostring(content)
+  language = type(language) == "string" and language:match("^[^\r\n]*") or ""
+
+  local longest = 0
+  for backticks in content:gmatch("`+") do
+    longest = math.max(longest, #backticks)
+  end
+
+  local fence = string.rep("`", math.max(4, longest + 1))
+  local suffix = content:sub(-1) == "\n" and "" or "\n"
+  return string.format("%s%s\n%s%s%s", fence, language, content, suffix, fence)
+end
+
+---@param result table Current tool result.
+---@param command string? Command extracted during message reconciliation.
+---@param language string|false Language used for the command code fence.
+---@return string
+local function format_run_command_result(result, command, language)
+  local content = result.content
+  if type(content) ~= "string" then
+    content = vim.inspect(content)
+  end
+
+  if type(command) ~= "string" or not language then
+    return content
+  end
+
+  local output = adapter.remove_run_command_prefix(content, command)
+  return string.format("%s\n%s", format_codeblock(command, language), output)
+end
+
+
 ---Display the current tool result under the cursor.
 ---@param chat_state table Per-chat extension state.
 ---@return nil
@@ -233,17 +274,27 @@ local function display_tool_reference(chat_state)
     return
   end
 
-  local content = result.content
-  if type(content) ~= "string" then
-    content = vim.inspect(content)
+  local content
+  if reference.name == "run_command" then
+    -- Keep command formatting isolated to run_command; read/write tools remain unchanged.
+    -- Reserve handling them for example using CodeCompanions Diff later on.
+    content = format_run_command_result(result, reference.command, M._opts.run_command_language)
+  else
+    content = result.content
+    if type(content) ~= "string" then
+      content = vim.inspect(content)
+    end
   end
 
-  -- TODO Add "bash" or something cooler for TS to the backticks
-  -- Also think about option adding the parameters of the call there as well (might be cool/interesting)
   local lines = vim.split(content, "\n", { plain = true })
-  ui.create_float(lines, {
+  local _, result_window = ui.create_float(lines, {
     title = string.format("Tool Result: %s", result.name or "unknown"),
   })
+
+  -- avoid placing cursor in fence, this feels annyoing in rendermarkdown as it disables hiding the fences
+  if reference.name == "run_command" and reference.command and M._opts.run_command_language then
+    vim.api.nvim_win_set_cursor(result_window, { 2, 0 })
+  end
 end
 
 --- --------------------
