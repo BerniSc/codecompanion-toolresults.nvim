@@ -106,6 +106,7 @@ The extension does not create persistent tool-output history.
 - Mouse hover is not implemented.
 - Result window lifecycle refinement is pending.
 - Result content is currently displayed as plain buffer lines.
+- `run_command` display formatting defaults to a `bash` command label, configurable via `run_command_language`; output uses a separate `text` block and other tools are unchanged.
 
 ## Development stages
 
@@ -123,6 +124,8 @@ The extension does not create persistent tool-output history.
 
 1. Test long output, repeated tools, multiple chats, cancellation, and unavailable results.
 2. Improve UI of resultdisplay.
+   `run_command` command/output formatting is now implemented; future work can add
+   structured result formatting without changing other tools.
 3. Add option to display params for the toolcall.
 4. Add adapter tests for reference extraction and result lookup.
 5. Add position tests for repeated tool names and missing rendered labels.
@@ -132,3 +135,4 @@ The extension does not create persistent tool-output history.
 9. Add native UI fallback if the CodeCompanion helper changes or disappears.
 10. Document supported CodeCompanion versions.
 11. Add mouse or hover interaction if cursor behavior remains stable.
+12. Add `insert_edit_into_file` diff display by reusing CodeCompanion's internal diff UI, with a fallback when internals change.
