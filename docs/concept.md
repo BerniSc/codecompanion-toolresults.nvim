@@ -124,15 +124,15 @@ The extension does not create persistent tool-output history.
 
 1. Test long output, repeated tools, multiple chats, cancellation, and unavailable results.
 2. Improve UI of resultdisplay.
-   `run_command` command/output formatting is now implemented; future work can add
-   structured result formatting without changing other tools.
+> Add different display, dependant on tooltype (for example CC's diff-view for inserts and so on)
 3. Add option to display params for the toolcall.
 4. Add adapter tests for reference extraction and result lookup.
 5. Add position tests for repeated tool names and missing rendered labels.
 6. Refresh positions after relevant buffer changes, not only checkpoints.
-7. Improve float lifecycle, including replacing or closing an existing result window.
-8. Add `<Esc>` close behavior and configurable UI options.
-9. Add native UI fallback if the CodeCompanion helper changes or disappears.
-10. Document supported CodeCompanion versions.
-11. Add mouse or hover interaction if cursor behavior remains stable.
-12. Add `insert_edit_into_file` diff display by reusing CodeCompanion's internal diff UI, with a fallback when internals change.
+7. Switch to better tooldetection and extmark based referencing for automatic tracking in buffer.
+8. Improve float lifecycle, including replacing or closing an existing result window.
+9. Add `<Esc>` close behavior and configurable UI options.
+10. Add native UI fallback if the CodeCompanion helper changes or disappears.
+11. Document supported CodeCompanion versions.
+12. Add mouse or hover interaction if cursor behavior remains stable.
+13. Add `insert_edit_into_file` diff display by reusing CodeCompanion's internal diff UI, with a fallback when internals change.

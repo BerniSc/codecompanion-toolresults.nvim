@@ -72,10 +72,20 @@ end
 ---@param chat_state table Per-chat extension state.
 ---@return nil
 local function refresh_positions(chat_state)
-  local lines_by_call_id = position.find_tool_lines(chat_state.bufnr, chat_state.references)
+  local lines_by_call_id, diagnostics = position.find_tool_lines(chat_state.bufnr, chat_state.references)
 
   for call_id, reference in pairs(chat_state.tools) do
     reference.line = lines_by_call_id[call_id]
+  end
+
+  -- do not proceed in case of error
+  if diagnostics.invalid_buffer then
+    return
+  end
+
+  if #diagnostics.unresolved > 0 or diagnostics.ambiguous > 0 then
+    notify(string.format("tool positions unresolved: %d missing, %d ambiguous; refusing unsafe lookup",
+      #diagnostics.unresolved, diagnostics.ambiguous), vim.log.levels.WARN)
   end
 end
 
@@ -215,12 +225,12 @@ local function format_codeblock(content, language)
   content = tostring(content)
   language = type(language) == "string" and language:match("^[^\r\n]*") or ""
 
-  local longest = 0
+  local longest_fence = 0
   for backticks in content:gmatch("`+") do
-    longest = math.max(longest, #backticks)
+    longest_fence = math.max(longest_fence, #backticks)
   end
 
-  local fence = string.rep("`", math.max(4, longest + 1))
+  local fence = string.rep("`", math.max(4, longest_fence + 1))
   local suffix = content:sub(-1) == "\n" and "" or "\n"
   return string.format("%s%s\n%s%s%s", fence, language, content, suffix, fence)
 end
@@ -259,7 +269,7 @@ local function display_tool_reference(chat_state)
   -- TODO Think about maybe sorting/persisting state. Maybe bad for refreshes, but sorting and persisting could improve
   -- O(n) lookup time on average. We are most likely to lookup tools that are close the the end of the chat and order is
   -- unlikely to change anyhow
-  local reference = position.find_reference_at_line(chat_state.tools, cursor_line)
+  local reference = position.find_reference_at_line(chat_state.references, cursor_line)
   if not reference then
     -- Always display -> No "notify" but direct vim.notify
     vim.notify("No tool call on current line", vim.log.levels.INFO)
@@ -318,11 +328,14 @@ local function attach_to_chat(chat, bufnr)
     bufnr = bufnr,
     chat = chat,
     references = {},
-    messages = {},
+    messages = chat.messages or {},
     tools = {},
   }
 
   state_by_bufnr[bufnr] = chat_state
+
+  -- Reconcile immediately. Chats may be restored or attached after messages exist.
+  reconcile_messages(chat_state)
 
   -- Record lightweight observation metadata before tool output enters the chat.
   -- This however does not include the toolresult yet, we get this via "on_checkpoint"
