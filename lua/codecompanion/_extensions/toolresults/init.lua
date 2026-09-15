@@ -14,6 +14,10 @@ Toolresults.exports = {
   state = function()
     return require("codecompanion_toolresults").state()
   end,
+
+  dump = function()
+    return require("codecompanion_toolresults").dump()
+  end,
 }
 
 return Toolresults
