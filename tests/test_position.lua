@@ -38,6 +38,47 @@ T["find_tool_lines"]["does not match a longer tool name"] = function()
   vim.api.nvim_buf_delete(bufnr, { force = true })
 end
 
+T["find_tool_lines"]["matches a tool name without arguments"] = function()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "read_file" })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, {
+    { call_id = "call-1", name = "read_file" },
+  })
+
+  MiniTest.expect.equality(positions, { ["call-1"] = 1 })
+  MiniTest.expect.equality(diagnostics, { unresolved = {}, ambiguous = 0 })
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+T["find_tool_lines"]["rejects an unresolved later reference"] = function()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "run_command: date" })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, {
+    { call_id = "call-1", name = "run_command", command = "date" },
+    { call_id = "call-2", name = "read_file" },
+  })
+
+  MiniTest.expect.equality(positions, {})
+  MiniTest.expect.equality(#diagnostics.unresolved, 1)
+  MiniTest.expect.equality(diagnostics.ambiguous, 2)
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+T["find_tool_lines"]["reports an invalid buffer"] = function()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, {
+    { call_id = "call-1", name = "read_file" },
+  })
+
+  MiniTest.expect.equality(positions, {})
+  MiniTest.expect.equality(diagnostics.invalid_buffer, true)
+  MiniTest.expect.equality(#diagnostics.unresolved, 1)
+end
+
 T["find_reference_at_line"] = function()
   local reference = { call_id = "call-1", line = 7 }
 

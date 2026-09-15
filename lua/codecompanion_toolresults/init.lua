@@ -1,6 +1,7 @@
 local M = {}
 
 local adapter = require("codecompanion_toolresults.adapters.messages")
+local diagnostics = require("codecompanion_toolresults.diagnostics")
 local ui = require("codecompanion_toolresults.adapters.ui")
 
 local position = require("codecompanion_toolresults.position")
@@ -177,6 +178,14 @@ end
 --- --------------------
 --- /Debugging
 --- --------------------
+
+---Write focused runtime state for diagnosing issues without restarting Neovim.
+---@param opts? table Dump options.
+---@return string? directory Created dump directory, or nil on failure.
+---@return string? error Error message on failure.
+function M.dump(opts)
+  return diagnostics.dump(state_by_bufnr, opts)
+end
 
 --- --------------------
 --- Display

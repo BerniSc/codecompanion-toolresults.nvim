@@ -45,6 +45,12 @@ extensions = {
 The current result opens in a floating window. The result is looked up from CodeCompanion's current message stack when requested; this extension does not maintain a second output history.
 This means it will match CodeCompanions context management.
 
+For runtime issues, call `codecompanion.extensions.toolresults.dump()` from inside Neovim. It writes a focused, on-demand diagnostic snapshot to a unique temporary directory and returns the directory path. Each tracked chat gets separate `messages.json`, `references.json`, `tools.json`, `buffer-metadata.json`, and human-readable `buffer.txt` files. Message content may contain sensitive data; inspect the files before sharing them.
+For purposes of copying:
+`
+:lua print(require("codecompanion").extensions.toolresults.dump())
+`
+
 ## Options
 
 | Option | Default | Description |
@@ -55,6 +61,8 @@ This means it will match CodeCompanions context management.
 | `run_command_language` | `"bash"` | Language label for displayed `run_command` commands. Set to another shell or `false`; default is only a display label, not a shell assumption. |
 | `debug` | `false` | Enable lifecycle and reference logging. |
 | `debug_buffer` | `false` | Log rendered chat-buffer lines and calculated positions. |
+
+The diagnostic dump does not require `debug` or `debug_buffer` to be enabled.
 
 ## Behavior after context management
 
