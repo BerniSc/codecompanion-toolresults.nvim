@@ -33,6 +33,45 @@ T["tool_references"]["ignores excess attributes"] = function()
                            excess_attributes.expected_references)
 end
 
+T["tool_references"]["handles missing messages"] = function()
+  MiniTest.expect.equality(messages.tool_references(nil), {})
+end
+
+T["tool_references"]["ignores malformed run_command arguments"] = function()
+  local references = messages.tool_references({
+    {
+      role = "llm",
+      tools = {
+        calls = {
+          {
+            id = "call-1",
+            ["function"] = {
+              name = "run_command",
+              arguments = "{not valid json}",
+            },
+          },
+        },
+      },
+    },
+    {
+      role = "tool",
+      tools = { call_id = "call-1", name = "run_command" },
+      content = "output",
+    },
+  })
+
+  MiniTest.expect.equality(references, {
+    {
+      call_id = "call-1",
+      name = "run_command",
+      command = nil,
+      message_id = nil,
+      message_index = nil,
+      status = "available",
+    },
+  })
+end
+
 
 T["find_tool_result"] = MiniTest.new_set()
 T["find_tool_result"]["returns current failed result"] = function()
@@ -42,6 +81,10 @@ end
 
 T["find_tool_result"]["returns nil for an unavailable result"] = function()
   MiniTest.expect.equality(messages.find_tool_result(fixture.messages, "missing-call"), nil)
+end
+
+T["find_tool_result"]["handles a missing call ID"] = function()
+  MiniTest.expect.equality(messages.find_tool_result({}, nil), nil)
 end
 
 
@@ -54,6 +97,8 @@ T["remove_run_command_prefix"]["removes only an exact prefix"] = function()
                            "output\n`")
   MiniTest.expect.equality(messages.remove_run_command_prefix("date\noutput", "date"),
                            "date\noutput")
+  MiniTest.expect.equality(messages.remove_run_command_prefix("prefix\n`date`\noutput", "date"),
+                           "prefix\n`date`\noutput")
 end
 
 return T
