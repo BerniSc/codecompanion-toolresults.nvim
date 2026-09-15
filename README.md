@@ -74,3 +74,27 @@ CodeCompanion changes may require adapter updates.
 
 `run_command` formatting uses a local display-only code-fence formatter and does not assume a shell for execution.
 
+## Testing
+
+Tests use `mini.test` from `mini.nvim` as a development-only dependency. `make test` fetches it automatically into ignored `deps/mini.nvim`; it is not a runtime dependency.
+
+Run the full test suite:
+
+```sh
+make test
+```
+
+Show detailed test groups:
+
+```sh
+make test VERBOSE=1
+```
+
+Run one test file:
+
+```sh
+make test_file FILE=tests/test_messages.lua
+```
+
+Message adapter tests use both a more realistic CodeCompanion message-batch fixture and smaller atomic fixtures. The full fixture checks compatibility with real message structure; atomic fixtures keep individual behaviors easy to diagnose.
+
