@@ -4,6 +4,10 @@ local M = {}
 ---@param reference table Tool reference.
 ---@return string? label Exact label, or nil when only tool name is known.
 local function expected_label(reference)
+  if reference.status == "invalidated" then
+    return reference.invalidated_line
+  end
+
   if reference.name == "run_command" and type(reference.command) == "string" and reference.command ~= "" then
     return reference.name .. ": " .. reference.command
   end
