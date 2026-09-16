@@ -1,5 +1,44 @@
 local M = {}
 
+local function rejection_base(line)
+  return line:gsub(', with the reason: ".*"$', "")
+end
+
+---Return the first rendered line of a declined-tool message.
+---@param content any Tool output content.
+---@param name? string Tool name.
+---@param command? string Parsed run_command command.
+---@return string? line Rendered rejection line, or nil for ordinary output.
+local function invalidated_line(content, name, command)
+  if type(content) ~= "string" then
+    return nil
+  end
+
+  for raw_line in content:gmatch("[^\r\n]+") do
+    local line = vim.trim(raw_line)
+    local base_line = rejection_base(line)
+    local is_rejection = name == "run_command" and type(command) == "string"
+      and base_line == string.format("The user rejected the execution of the `%s` command", command)
+
+    if is_rejection
+      or base_line == "The user rejected the grep search tool"
+      or base_line == "The user rejected the search help tool"
+      or base_line == "The user rejected the file search tool"
+      or base_line == "The user rejected the read file tool"
+      or base_line == "The user rejected the creation of the file"
+      or base_line == "The user rejected the deletion of the file"
+      or base_line == "The user rejected the get diagnostics tool"
+      or base_line == "The user rejected the get changed files tool"
+      or base_line == "The user rejected the memory operation"
+      -- TODO Monitor, codecompanion uses once with `` in cmd_tool and once without in orchestrator
+      or base_line:match("^The user rejected the execution of the [^ ]+ tool$")
+      or line:match('^User rejected the changes for .-`, with the reason ".-"$')    -- insert edit into file
+    then
+      return line
+    end
+  end
+end
+
 ---Extract CodeCompanion metadata used to identify a message.
 ---@param message table CodeCompanion message.
 ---@return table identity containing message ID and index.
@@ -52,13 +91,18 @@ function M.tool_references(messages)
     if message.role == "tool" and message.tools then
       local identity = get_message_identity(message)
 
+      local command = commands_by_id[message.tools.call_id]
+      local invalidated = invalidated_line(message.content, message.tools.name, command)
+
       references[#references + 1] = {
         call_id = message.tools.call_id,
         name = message.tools.name,
-        command = commands_by_id[message.tools.call_id],
+        command = command,
+        invalidated_line = invalidated,
         message_id = identity.message_id,
         message_index = identity.message_index,
-        status = "available",
+        -- a ? b : c equivalent
+        status = invalidated and "invalidated" or "available",
       }
     end
   end
