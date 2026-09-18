@@ -17,6 +17,16 @@ local function invalidated_line(content, name, command)
   for raw_line in content:gmatch("[^\r\n]+") do
     local line = vim.trim(raw_line)
     local base_line = rejection_base(line)
+
+    -- cancellation.
+    local is_cancelled = type(name) == "string"
+      and line == string.format("The user cancelled the execution of the %s tool", name)
+
+    if is_cancelled then
+      return string.format("Cancelled `%s`", name)
+    end
+
+    -- rejection.
     local is_rejection = name == "run_command" and type(command) == "string"
       and base_line == string.format("The user rejected the execution of the `%s` command", command)
 
@@ -37,6 +47,9 @@ local function invalidated_line(content, name, command)
       return line
     end
   end
+
+  -- basecase - not invalidated.
+  return nil
 end
 
 ---Extract CodeCompanion metadata used to identify a message.
