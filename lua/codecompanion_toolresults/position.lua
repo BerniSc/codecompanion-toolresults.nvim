@@ -13,26 +13,52 @@ local function expected_label(reference)
   end
 end
 
----Check whether a rendered line (passed in full) is a tool label for a reference.
----@param line string Rendered buffer line.
+---Check whether rendered buffer lines starting at a position match a reference label.
+---@param lines string[] Rendered buffer lines.
+---@param start_line_number integer 1-based starting line.
 ---@param reference table Tool reference.
----@return boolean
-local function matches_reference(line, reference)
+---@return integer? last_line Last matching line, or nil.
+local function matching_label_end(lines, start_line_number, reference)
   local label = expected_label(reference)
-  if label then
-    return line == label
+  -- single line check.
+  if not label then
+    -- OOB.
+    if start_line_number > #lines then
+      return nil
+    end
+
+    local line = lines[start_line_number]
+    if type(reference.name) ~= "string" or reference.name == "" then
+      return nil
+    end
+
+    -- CodeCompanion renders tools without command text as either `name` or `name: ...`.
+    -- Require a complete name boundary; do not match `run_command_extra` as `run_command`.
+    -- This is still kind of loose, as it allows for example "read_file: Hey there, whats up dog?"
+    -- to correctly match, but until the expected_label function is more fleshed out this is fine
+    -- but here is a TODO until then
+    if line == reference.name or line:sub(1, #reference.name + 1) == reference.name .. ":" then
+      return start_line_number
+    end
+
+    return nil
   end
 
-  if type(reference.name) ~= "string" or reference.name == "" then
-    return false
+  -- A rare "behaviour" in CodeCompanion can result in the modell sending an underescaped newline in a run_command argument.
+  -- This can render one expected label across several buffer lines. In that case we still want to match, but include the
+  -- following data as well. For this we match every segment in order.
+  local label_lines = vim.split(label, "\n", { plain = true })
+  if start_line_number + #label_lines - 1 > #lines then
+    return nil
   end
 
-  -- CodeCompanion renders tools without command text as either `name` or `name: ...`.
-  -- Require a complete name boundary; do not match `run_command_extra` as `run_command`.
-  -- This is still kind of loose, as it allows for example "read_file: Hey there, whats up dog?"
-  -- to correctly match, but until the expected_label function is more fleshed out this is fine
-  -- but here is a TODO until then
-  return line == reference.name or line:sub(1, #reference.name + 1) == reference.name .. ":"
+  for offset, label_line in ipairs(label_lines) do
+    if lines[start_line_number + offset - 1] ~= label_line then
+      return nil
+    end
+  end
+
+  return start_line_number + #label_lines - 1
 end
 
 ---Find rendered line positions for tool references.
@@ -55,9 +81,12 @@ function M.find_tool_lines(bufnr, references)
   for _, reference in ipairs(references or {}) do
     if reference.call_id then
       local match_line
+      local match_end
       for line_number = search_start, #lines do
-        if matches_reference(lines[line_number], reference) then
+        local label_end = matching_label_end(lines, line_number, reference)
+        if label_end then
           match_line = line_number
+          match_end = label_end
           break
         end
       end
@@ -74,7 +103,7 @@ function M.find_tool_lines(bufnr, references)
       end
 
       positions[reference.call_id] = match_line
-      search_start = match_line + 1
+      search_start = match_end + 1
     end
   end
 

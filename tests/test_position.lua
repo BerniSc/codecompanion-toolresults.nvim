@@ -79,6 +79,160 @@ T["find_tool_lines"]["reports an invalid buffer"] = function()
   MiniTest.expect.equality(#diagnostics.unresolved, 1)
 end
 
+T["find_tool_lines"]["matches a run_command label split across rendered lines"] = function()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+    "run_command: printf 'first",
+    "second'",
+    "read_file: README.md",
+  })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, {
+    { call_id = "call-1", name = "run_command", command = "printf 'first\nsecond'" },
+    { call_id = "call-2", name = "read_file" },
+  })
+
+  MiniTest.expect.equality(positions, { ["call-1"] = 1, ["call-2"] = 3 })
+  MiniTest.expect.equality(diagnostics, { unresolved = {}, ambiguous = 0 })
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+T["find_tool_lines"]["matches a run_command label across more than two rendered lines"] = function()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+    "read_file: before.txt",
+    "run_command: printf 'first",
+    "second",
+    "third",
+    "fourth'",
+    "grep_search: after",
+  })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, {
+    { call_id = "call-before", name = "read_file" },
+    {
+      call_id = "call-multiline",
+      name = "run_command",
+      command = "printf 'first\nsecond\nthird\nfourth'",
+    },
+    { call_id = "call-after", name = "grep_search" },
+  })
+
+  MiniTest.expect.equality(positions, {
+    ["call-before"] = 1,
+    ["call-multiline"] = 2,
+    ["call-after"] = 6,
+  })
+  MiniTest.expect.equality(diagnostics, { unresolved = {}, ambiguous = 0 })
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+T["find_tool_lines"]["matches multiline labels with doubled backslashes"] = function()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+    "read_file: before.txt",
+    "run_command: printf 'C:\\\\temp\\\\file",
+    "next line",
+    "last line'",
+    "grep_search: after",
+  })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, {
+    { call_id = "call-before", name = "read_file" },
+    {
+      call_id = "call-escaped",
+      name = "run_command",
+      command = "printf 'C:\\\\temp\\\\file\nnext line\nlast line'",
+    },
+    { call_id = "call-after", name = "grep_search" },
+  })
+
+  MiniTest.expect.equality(positions, {
+    ["call-before"] = 1,
+    ["call-escaped"] = 2,
+    ["call-after"] = 5,
+  })
+  MiniTest.expect.equality(diagnostics, { unresolved = {}, ambiguous = 0 })
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+T["find_tool_lines"]["distinguishes escaped backslash-n from rendered newline"] = function()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+    "read_file: before.txt",
+    "run_command: printf 'literal\\nnewline'",
+    "run_command: printf 'rendered",
+    "newline'",
+    "grep_search: after",
+  })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, {
+    { call_id = "call-before", name = "read_file" },
+    {
+      call_id = "call-literal-escaped-newline",
+      name = "run_command",
+      command = "printf 'literal\\nnewline'",
+    },
+    {
+      call_id = "call-rendered-newline",
+      name = "run_command",
+      command = "printf 'rendered\nnewline'",
+    },
+    { call_id = "call-after", name = "grep_search" },
+  })
+
+  MiniTest.expect.equality(positions, {
+    ["call-before"] = 1,
+    ["call-literal-escaped-newline"] = 2,
+    ["call-rendered-newline"] = 3,
+    ["call-after"] = 5,
+  })
+  MiniTest.expect.equality(diagnostics, { unresolved = {}, ambiguous = 0 })
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+T["find_tool_lines"]["matches each newline escape depth correctly"] = function()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+    "read_file: before.txt",
+    "run_command: printf 'one\\nline'",
+    "run_command: printf 'two\\\\nline'",
+    "run_command: printf 'actual",
+    "newline'",
+    "grep_search: after",
+  })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, {
+    { call_id = "call-before", name = "read_file" },
+    {
+      call_id = "call-one-backslash",
+      name = "run_command",
+      command = "printf 'one\\nline'",
+    },
+    {
+      call_id = "call-two-backslashes",
+      name = "run_command",
+      command = "printf 'two\\\\nline'",
+    },
+    {
+      call_id = "call-actual-newline",
+      name = "run_command",
+      command = "printf 'actual\nnewline'",
+    },
+    { call_id = "call-after", name = "grep_search" },
+  })
+
+  MiniTest.expect.equality(positions, {
+    ["call-before"] = 1,
+    ["call-one-backslash"] = 2,
+    ["call-two-backslashes"] = 3,
+    ["call-actual-newline"] = 4,
+    ["call-after"] = 6,
+  })
+  MiniTest.expect.equality(diagnostics, { unresolved = {}, ambiguous = 0 })
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
 T["find_reference_at_line"] = function()
   local reference = { call_id = "call-1", line = 7 }
 
