@@ -24,6 +24,31 @@ local function format_codeblock(content, language)
   return string.format("%s%s\n%s%s%s", fence, language, content, suffix, fence)
 end
 
+---@param opts table Extension options.
+---@return string? winbar Formatted winbar, or nil when disabled.
+local function build_winbar(opts)
+  if not opts.float_show_keymaps then
+    return nil
+  end
+
+  local mappings = {}
+  local function add(key, label)
+    if key then
+      mappings[#mappings + 1] = string.format("%s %s", key, label)
+    end
+  end
+
+  add(opts.float_next_keymap, "Next")
+  add(opts.float_previous_keymap, "Previous")
+  add(opts.float_return_keymap, "Return")
+  add(opts.float_close_keymap, "Close")
+  add(opts.float_escape_keymap, "Close")
+
+  -- Center the result, make sure to escape keymaps containing % signs.
+  local text = table.concat(mappings, "   ")
+  return "%=" .. text:gsub("%%", "%%%%") .. "%="
+end
+
 ---@param adapter table Message adapter used for run_command prefix removal.
 ---@param result table Current tool result.
 ---@param command string? Command extracted during message reconciliation.
@@ -108,7 +133,8 @@ local function update_float(chat_state, reference, index, lines, title, opts, ui
   local float = chat_state.float
   -- Return false when no managed float exists or its window/buffer was manually closed. The caller then closes stale
   -- state and recreates the managed float.
-  if not float or not ui.update_float(float.bufnr, float.winnr, lines, { title = title }) then
+  local winbar = build_winbar(opts)
+  if not float or not ui.update_float(float.bufnr, float.winnr, lines, { title = title, winbar = winbar }) then
     return false
   end
 
@@ -165,7 +191,7 @@ local function create_float(chat_state, reference, index, lines, title, opts, ui
     ui.close_float(chat_state.float.bufnr, chat_state.float.winnr)
   end
 
-  local bufnr, winnr = ui.create_float(lines, { title = title })
+  local bufnr, winnr = ui.create_float(lines, { title = title, winbar = build_winbar(opts) })
   local float = { bufnr = bufnr, winnr = winnr, index = index, call_id = reference.call_id }
   chat_state.float = float
 

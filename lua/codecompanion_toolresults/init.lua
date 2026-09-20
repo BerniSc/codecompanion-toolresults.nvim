@@ -36,6 +36,7 @@ local defaults = {
   float_close_keymap = "q",
   float_escape_keymap = "<Esc>",
   float_return_keymap = "gT",
+  float_show_keymaps = true,
   run_command_language = "bash", -- Display command snippets as bash; change label or set false to keep raw output.
 }
 

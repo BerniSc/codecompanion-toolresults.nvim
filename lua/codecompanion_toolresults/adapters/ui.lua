@@ -44,6 +44,10 @@ function M.update_float(bufnr, winnr, lines, opts)
     vim.api.nvim_win_set_config(winnr, { title = " " .. opts.title .. " ", title_pos = "center" })
   end
 
+  if opts and opts.winbar then
+    vim.wo[winnr].winbar = opts.winbar
+  end
+
   vim.api.nvim_set_current_win(winnr)
   return true
 end
