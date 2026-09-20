@@ -1,28 +1,7 @@
 local M = {}
 
 local navigation = require("codecompanion_toolresults.navigation")
-
----Format content as a fenced Markdown code block.
----
----Use at least four backticks and grow fence length when content contains
----longer backtick runs, so embedded Markdown remains literal.
----@param content any Content to format.
----@param language? string Optional fence language label.
----@return string Markdown code block.
-local function format_codeblock(content, language)
-  content = tostring(content)
-  language = type(language) == "string" and language:match("^[^\r\n]*") or ""
-
-  local longest_fence = 0
-  for backticks in content:gmatch("`+") do
-    longest_fence = math.max(longest_fence, #backticks)
-  end
-
-  local fence = string.rep("`", math.max(4, longest_fence + 1))
-  -- ternary equivalent (a ? b : c).
-  local suffix = content:sub(-1) == "\n" and "" or "\n"
-  return string.format("%s%s\n%s%s%s", fence, language, content, suffix, fence)
-end
+local renderers = require("codecompanion_toolresults.renderers")
 
 ---@param opts table Extension options.
 ---@return string? winbar Formatted winbar, or nil when disabled.
@@ -47,47 +26,6 @@ local function build_winbar(opts)
   -- Center the result, make sure to escape keymaps containing % signs.
   local text = table.concat(mappings, "   ")
   return "%=" .. text:gsub("%%", "%%%%") .. "%="
-end
-
----@param adapter table Message adapter used for run_command prefix removal.
----@param result table Current tool result.
----@param command string? Command extracted during message reconciliation.
----@param language string|false Language used for the command code fence.
----@return string
-local function format_run_command_result(adapter, result, command, language)
-  local content = result.content
-  if type(content) ~= "string" then
-    content = vim.inspect(content)
-  end
-
-  if type(command) ~= "string" or not language then
-    return content
-  end
-
-  local output = adapter.remove_run_command_prefix(content, command)
-  return string.format("%s\n%s", format_codeblock(command, language), output)
-end
-
----Render one tool result into lines suitable for the managed result buffer.
----@param adapter table Message adapter used for run_command prefix removal.
----@param reference table Tool reference containing tool name and command metadata.
----@param result table Current tool result containing content.
----@param opts table Extension options, including run_command_language.
----@return string[] lines Rendered result split into buffer lines.
-local function render_result(adapter, reference, result, opts)
-  local content
-  if reference.name == "run_command" then
-    -- Keep command formatting isolated to run_command; read/write tools remain unchanged.
-    -- Reserve handling them for example using CodeCompanions Diff later on.
-    content = format_run_command_result(adapter, result, reference.command, opts.run_command_language)
-  else
-    content = result.content
-    if type(content) ~= "string" then
-      content = vim.inspect(content)
-    end
-  end
-
-  return vim.split(content, "\n", { plain = true })
 end
 
 ---@param reference table Tool reference.
@@ -186,7 +124,8 @@ end
 ---@param ui table UI adapter.
 ---@param adapter table Message adapter.
 ---@param reconcile fun(chat_state: table) Reconcile current chat messages.
-local function create_float(chat_state, reference, index, lines, title, opts, ui, adapter, reconcile)
+---@param renderer_context table Renderer dependencies.
+local function create_float(chat_state, reference, index, lines, title, opts, ui, adapter, reconcile, renderer_context)
   if chat_state.float then
     ui.close_float(chat_state.float.bufnr, chat_state.float.winnr)
   end
@@ -212,7 +151,7 @@ local function create_float(chat_state, reference, index, lines, title, opts, ui
     if next_index then
       -- Keep the injected dependencies explicit for testability. If this list grows,
       -- group them into a display context rather than hiding them in global state.
-      M.show(chat_state, chat_state.references[next_index], next_index, opts, adapter, ui, reconcile)
+      M.show(chat_state, chat_state.references[next_index], next_index, opts, adapter, ui, reconcile, renderer_context)
     end
   end
 
@@ -243,22 +182,23 @@ end
 ---@param adapter table Message adapter.
 ---@param ui table UI adapter.
 ---@param reconcile fun(chat_state: table) Reconcile current chat messages.
+---@param renderer_context table Renderer dependencies.
 ---@return boolean displayed Whether the result was displayed.
-function M.show(chat_state, reference, index, opts, adapter, ui, reconcile)
+function M.show(chat_state, reference, index, opts, adapter, ui, reconcile, renderer_context)
   local result = adapter.find_tool_result(chat_state.messages, reference.call_id)
   if not result then
     vim.notify(string.format("Tool result unavailable: %s (%s)", reference.name or "?", tostring(reference.call_id or "?")), vim.log.levels.WARN)
     return false
   end
 
-  local lines = render_result(adapter, reference, result, opts)
+  local lines = renderers.render(reference, result, opts, renderer_context)
   local title = build_title(result, index, #chat_state.references)
 
   if update_float(chat_state, reference, index, lines, title, opts, ui) then
     return true
   end
 
-  create_float(chat_state, reference, index, lines, title, opts, ui, adapter, reconcile)
+  create_float(chat_state, reference, index, lines, title, opts, ui, adapter, reconcile, renderer_context)
   return true
 end
 
