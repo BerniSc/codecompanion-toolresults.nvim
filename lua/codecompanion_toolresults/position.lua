@@ -115,11 +115,11 @@ end
 ---Find the tool reference rendered on a specific line.
 ---@param references table[] Tool references with current line positions.
 ---@param line integer 1-based buffer line.
----@return table? Matching tool reference, if any.
+---@return table?, integer? Matching tool reference and its ordered index, or nil when absent.
 function M.find_reference_at_line(references, line)
-  for _, reference in ipairs(references or {}) do
+  for index, reference in ipairs(references or {}) do
     if reference.line == line then
-      return reference
+      return reference, index
     end
   end
 end

@@ -13,8 +13,11 @@ Early development. Current implementation supports:
 - Partial lookup in batched calls.
 - Cursor-based lookup with `gT`.
 - Configurable cursor navigation with `gtn` and `gtp`.
-- Result display in a floating window.
 - Inheriting CodeCompanions floating-window dimensions and options.
+- One reusable managed result float per chat.
+- Float-local result navigation and close mappings.
+- Result position in the float title.
+- Safe float recreation after manual close.
 
 ## Installation
 
@@ -28,12 +31,37 @@ extensions = {
       keymap = "gT",
       next_keymap = "gtn",
       previous_keymap = "gtp",
+      float_next_keymap = "]t",
+      float_previous_keymap = "[t",
+      float_close_keymap = "q",
+      float_escape_keymap = "<Esc>",
+      float_return_keymap = "gT",
+      float_show_keymaps = true,
+      run_command_language = "bash", -- Display command snippets as bash; change label or set false to keep raw output.
     },
   },
 },
 ````
 
-`gT` displays result under cursor. `gtn` moves to next rendered tool-call line; `gtp` moves to previous. Set either navigation option to `false` to disable it.
+
+## Result float
+
+The extension reuses one managed result float per chat. Displaying another result updates that float instead of opening a second window. The title includes the ordered result position, for example `Tool Result: read_file [2/5]`.
+
+While focused inside the float:
+
+- `]t` shows the next result.
+- `[t` shows the previous result.
+- `q` closes the float.
+- `<Esc>` closes the float.
+- `gT` closes the float and returns to the corresponding tool-call line in the chat.
+
+Navigation wraps from last result to first and from first result to last. It uses ordered tool references, independently of chat-buffer cursor position. If the float is manually closed, the next display or navigation action recreates it safely. Closing the parent chat also closes its managed result float.
+
+Mappings are configurable with `float_next_keymap`, `float_previous_keymap`, `float_close_keymap`, `float_escape_keymap`, and `float_return_keymap`. Set an option to `false` to disable its mapping.
+
+The optional winbar displays configured float-local mappings at the top of the result window. Keymap options set to `false` are not shown. Set `float_show_keymaps = false` to hide the winbar while keeping keymap behavior unchanged.
+
 
 ## Usage
 
@@ -58,6 +86,12 @@ For purposes of copying:
 | `keymap` | `"gT"` | Chat-buffer keymap for displaying a result. Set to `false` to disable. |
 | `next_keymap` | `"gtn"` | Chat-buffer keymap for moving to next tool result. Set to `false` to disable. |
 | `previous_keymap` | `"gtp"` | Chat-buffer keymap for moving to previous tool result. Set to `false` to disable. |
+| `float_next_keymap` | `"]t"` | Float-local next-result mapping. Set to `false` to disable. |
+| `float_previous_keymap` | `"[t"` | Float-local previous-result mapping. Set to `false` to disable. |
+| `float_close_keymap` | `"q"` | Float-local close mapping. Set to `false` to disable. |
+| `float_escape_keymap` | `"<Esc>"` | Float-local Escape mapping. Set to `false` to disable. |
+| `float_return_keymap` | `"gT"` | Float-local mapping that closes the result float and returns to its originating tool-call line. Set to `false` to disable. |
+| `float_show_keymaps` | `true` | Show float-local mappings in the result window winbar. |
 | `run_command_language` | `"bash"` | Language label for displayed `run_command` commands. Set to another shell or `false`; default is only a display label, not a shell assumption. |
 | `debug` | `false` | Enable lifecycle and reference logging. |
 | `debug_buffer` | `false` | Log rendered chat-buffer lines and calculated positions. |

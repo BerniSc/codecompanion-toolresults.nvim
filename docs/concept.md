@@ -96,6 +96,22 @@ The extension follows CodeCompanion's current message state:
 
 The extension does not create persistent tool-output history.
 
+## Result float behavior
+
+The extension maintains one managed result float per chat. `gT` creates it when needed; later displays update the existing float. If the user closes the float manually, the next display or float-local navigation detects the invalid window and recreates it.
+
+The float title includes the ordered result position, such as `Tool Result: read_file [2/5]`. Float-local mappings are configurable:
+
+- `]t`: next result
+- `[t`: previous result
+- `q`: close
+- `<Esc>`: close
+- `gT`: close the float and return to its originating tool-call line in the chat
+
+Next and previous navigation wraps around the ordered references. It does not depend on chat-buffer line positions. `gT` uses the float's stored `call_id`, reconciles current positions, closes the float, and returns to the corresponding visible chat line. `<Esc>` remains a separate close-only mapping. Closing the parent CodeCompanion chat closes its managed result float.
+
+The display module currently owns result rendering, float lifecycle, cursor placement, and float-local mappings. Stage 2 will separate rendering behind a small renderer interface while keeping lifecycle behavior unchanged.
+
 ## Current limitations
 
 - Rendering detection depends on visible tool-label lines.
@@ -104,9 +120,8 @@ The extension does not create persistent tool-output history.
 - Exact per-tool post-insert observation would require a public CodeCompanion callback exposing the completed call ID or message.
 - The floating-window helper is an internal CodeCompanion API, but mapped via adapter.
 - Mouse hover is not implemented.
-- Result window lifecycle refinement is pending.
-- Result content is currently displayed as plain buffer lines.
-- `run_command` display formatting defaults to a `bash` command label, configurable via `run_command_language`; output uses a separate `text` block and other tools are unchanged.
+- Rendering remains inside `display.lua` until a renderer registry is introduced.
+- `run_command` display formatting currently defaults to a `bash` command label, configurable via `run_command_language`; output uses a separate `text` block and other tools retain current string/non-string handling.
 
 ## Development stages
 
@@ -120,19 +135,26 @@ The extension does not create persistent tool-output history.
 - Configurable next/previous navigation with `gtn` and `gtp`.
 - CodeCompanion-styled result float.
 
-### Next
+### Next: renderer separation
+
+1. Move result rendering behind a small renderer interface while preserving current output.
+2. Add fallback rendering for tools without a specific renderer.
+3. Preserve `run_command` command-fence behavior and configurable `run_command_language`.
+4. Add tool-specific renderers later for `read_file`, `grep_search`, `search_grep`, and `insert_edit_into_file`.
+5. Investigate CodeCompanion's diff UI for edit tools.
+6. Add optional tool-call parameter display.
+
+### Later work
 
 1. Test long output, repeated tools, multiple chats, cancellation, and unavailable results.
-2. Improve UI of resultdisplay.
-> Add different display, dependant on tooltype (for example CC's diff-view for inserts and so on)
-3. Add option to display params for the toolcall.
-4. Add adapter tests for reference extraction and result lookup.
-5. Add position tests for repeated tool names and missing rendered labels.
-6. Refresh positions after relevant buffer changes, not only checkpoints.
-7. Switch to better tooldetection and extmark based referencing for automatic tracking in buffer.
-8. Improve float lifecycle, including replacing or closing an existing result window.
-9. Add `<Esc>` close behavior and configurable UI options.
-10. Add native UI fallback if the CodeCompanion helper changes or disappears.
-11. Document supported CodeCompanion versions.
-12. Add mouse or hover interaction if cursor behavior remains stable.
-13. Add `insert_edit_into_file` diff display by reusing CodeCompanion's internal diff UI, with a fallback when internals change.
+2. Add adapter tests for reference extraction and result lookup.
+3. Add position tests for repeated tool names and missing rendered labels.
+4. Refresh positions after relevant buffer changes, not only checkpoints.
+5. Switch to better tool detection and extmark-based referencing for automatic tracking in the buffer.
+6. Improve float sizing and window options.
+7. Document supported CodeCompanion versions.
+8. Add mouse or hover interaction if cursor behavior remains stable.
+
+### Optional later work
+
+- Add an experimental, explicitly confirmed recovery command for a tool call whose message exists but whose result is missing. Insert only a clearly marked synthetic placeholder, never fabricated output; preserve original state or provide rollback. Ensure deterministic detection and diagnostics first.
