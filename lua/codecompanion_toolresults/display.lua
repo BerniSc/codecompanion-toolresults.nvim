@@ -262,4 +262,7 @@ function M.show(chat_state, reference, index, opts, adapter, ui, reconcile)
   return true
 end
 
+-- Test seam for the pure formatter; float lifecycle remains private.
+M._build_winbar = build_winbar
+
 return M
