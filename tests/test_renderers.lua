@@ -1,5 +1,6 @@
 local MiniTest = require("mini.test")
 local renderers = require("codecompanion_toolresults.renderers")
+local message_adapter = require("codecompanion_toolresults.adapters.messages")
 local fixtures = require("tests.fixtures.renderers._barrell")
 
 local T = MiniTest.new_set()
@@ -13,7 +14,31 @@ local context = {
     end
     return content
   end,
+  normalize_result = message_adapter.normalize_result,
 }
+
+T["truncation"] = MiniTest.new_set()
+
+T["truncation"]["moves a final CodeCompanion notice above the result"] = function()
+  local notice = "[Tool output truncated: it was around 100 tokens, which is over the 50 token limit for a single tool result.]"
+  local content, metadata = message_adapter.normalize_result("before\n\n" .. notice)
+
+  MiniTest.expect.equality(content, "before")
+  MiniTest.expect.equality(metadata.truncation_notice, notice)
+  MiniTest.expect.equality(renderers.render({ name = "unknown" }, { content = "before\n\n" .. notice }, opts, context),
+    { "⚠ " .. notice, "before" })
+end
+
+T["truncation"]["does not treat an inline marker as truncation"] = function()
+  local notice = "[Tool output truncated: it was around 100 tokens, which is over the 50 token limit for a single tool result.]"
+  local content, metadata = message_adapter.normalize_result("before " .. notice .. " after")
+
+  MiniTest.expect.equality(content, "before " .. notice .. " after")
+  MiniTest.expect.equality(metadata.truncation_notice, nil)
+  MiniTest.expect.equality(renderers.render({ name = "unknown" }, { content = content }, opts, context),
+    { "before " .. notice .. " after" })
+end
+
 
 T["fallback"] = MiniTest.new_set()
 

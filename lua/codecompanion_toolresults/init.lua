@@ -271,6 +271,7 @@ local function display_tool_reference(chat_state)
   -- Resolve and render the current result through the display module.
   display.show(chat_state, reference, index, M._opts, adapter, ui, reconcile_messages, {
     remove_run_command_prefix = adapter.remove_run_command_prefix,
+    normalize_result = adapter.normalize_result,
   })
 end
 
