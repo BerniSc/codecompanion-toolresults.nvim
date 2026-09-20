@@ -28,12 +28,24 @@ extensions = {
       keymap = "gT",
       next_keymap = "gtn",
       previous_keymap = "gtp",
+      float_next_keymap = "]t",
+      float_previous_keymap = "[t",
+      float_close_keymap = "q",
+      float_escape_keymap = "<Esc>",
+      run_command_language = "bash", -- Display command snippets as bash; change label or set false to keep raw output.
     },
   },
 },
 ````
 
-`gT` displays result under cursor. `gtn` moves to next rendered tool-call line; `gtp` moves to previous. Set either navigation option to `false` to disable it.
+
+Result floats reuse one managed window per chat. While focused inside the float:
+
+- `]t` shows next tool result.
+- `[t` shows previous tool result.
+- `q` and `<Esc>` close the float.
+
+These mappings are configurable with `float_next_keymap`, `float_previous_keymap`, `float_close_keymap`, and `float_escape_keymap`. Set an option to `false` to disable its mapping.
 
 ## Usage
 
@@ -58,6 +70,10 @@ For purposes of copying:
 | `keymap` | `"gT"` | Chat-buffer keymap for displaying a result. Set to `false` to disable. |
 | `next_keymap` | `"gtn"` | Chat-buffer keymap for moving to next tool result. Set to `false` to disable. |
 | `previous_keymap` | `"gtp"` | Chat-buffer keymap for moving to previous tool result. Set to `false` to disable. |
+| `float_next_keymap` | `"]t"` | Float-local next-result mapping. Set to `false` to disable. |
+| `float_previous_keymap` | `"[t"` | Float-local previous-result mapping. Set to `false` to disable. |
+| `float_close_keymap` | `"q"` | Float-local close mapping. Set to `false` to disable. |
+| `float_escape_keymap` | `"<Esc>"` | Float-local Escape mapping. Set to `false` to disable. |
 | `run_command_language` | `"bash"` | Language label for displayed `run_command` commands. Set to another shell or `false`; default is only a display label, not a shell assumption. |
 | `debug` | `false` | Enable lifecycle and reference logging. |
 | `debug_buffer` | `false` | Log rendered chat-buffer lines and calculated positions. |

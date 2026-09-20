@@ -105,7 +105,9 @@ The extension does not create persistent tool-output history.
 - The floating-window helper is an internal CodeCompanion API, but mapped via adapter.
 - Mouse hover is not implemented.
 - Result window lifecycle refinement is pending.
-- Result content is currently displayed as plain buffer lines.
+- The extension manages one result float per chat and updates its buffer during float-local navigation.
+- Float-local navigation uses ordered tool references and does not depend on chat-buffer line positions.
+- Rendering is isolated in `display.lua` so future tool-specific renderers can be added without changing lifecycle wiring.
 - `run_command` display formatting defaults to a `bash` command label, configurable via `run_command_language`; output uses a separate `text` block and other tools are unchanged.
 
 ## Development stages
