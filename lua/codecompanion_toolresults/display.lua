@@ -113,8 +113,42 @@ local function update_float(chat_state, reference, index, lines, title, opts, ui
   end
 
   float.index = index
+  float.call_id = reference.call_id
   position_cursor(float.winnr, reference, lines, opts)
   return true
+end
+
+---Return from the managed result float to its originating chat tool line.
+---@param chat_state table Per-chat extension state.
+---@param call_id string Tool call identifier.
+---@param reconcile fun(chat_state: table) Reconcile current chat messages.
+---@param close fun() Close this managed float.
+local function return_to_chat(chat_state, call_id, reconcile, close)
+  reconcile(chat_state)
+
+  local reference = chat_state.tools[call_id]
+  if not reference or not reference.line then
+    close()
+    vim.notify("Tool call location unavailable", vim.log.levels.WARN)
+    return
+  end
+
+  local chat_window
+  for _, candidate in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(candidate) == chat_state.bufnr then
+      chat_window = candidate
+      break
+    end
+  end
+
+  close()
+  if not chat_window then
+    vim.notify("CodeCompanion chat window unavailable", vim.log.levels.WARN)
+    return
+  end
+
+  vim.api.nvim_set_current_win(chat_window)
+  vim.api.nvim_win_set_cursor(chat_window, { reference.line, 0 })
 end
 
 ---@param chat_state table Per-chat extension state.
@@ -132,7 +166,7 @@ local function create_float(chat_state, reference, index, lines, title, opts, ui
   end
 
   local bufnr, winnr = ui.create_float(lines, { title = title })
-  local float = { bufnr = bufnr, winnr = winnr, index = index }
+  local float = { bufnr = bufnr, winnr = winnr, index = index, call_id = reference.call_id }
   chat_state.float = float
 
   local function close()
@@ -161,6 +195,7 @@ local function create_float(chat_state, reference, index, lines, title, opts, ui
     { "n", opts.float_previous_keymap, function() move(-1) end, "Previous tool result" },
     { "n", opts.float_close_keymap, close, "Close tool result" },
     { "n", opts.float_escape_keymap, close, "Close tool result" },
+    { "n", opts.float_return_keymap, function() return_to_chat(chat_state, float.call_id, reconcile, close) end, "Return to tool call" },
   }
   for _, mapping in ipairs(mappings) do
     if mapping[2] then

@@ -11,6 +11,7 @@ local display = require("codecompanion_toolresults.display")
 ---@field bufnr integer
 ---@field winnr integer
 ---@field index integer
+---@field call_id string Tool call identifier for returning to the chat location.
 
 ---@class CodeCompanionToolresults.ChatState
 ---@field bufnr integer
@@ -34,6 +35,7 @@ local defaults = {
   float_previous_keymap = "[t",
   float_close_keymap = "q",
   float_escape_keymap = "<Esc>",
+  float_return_keymap = "gT",
   run_command_language = "bash", -- Display command snippets as bash; change label or set false to keep raw output.
 }
 
