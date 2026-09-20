@@ -12,7 +12,7 @@ This plugin stores references and presentation metadata only.
 
 1. CodeCompanion creates chat buffer.
 2. The extension attaches callbacks to that chat.
-3. `on_tool_output` updates the message reference and schedules reconciliation.
+3. `on_tool_output` updates the tracked message reference and schedules reconciliation.
 4. Scheduled reconciliation can see results that have finished before the whole tool batch is complete.
 5. `on_checkpoint` reconciles the complete current message stack.
 6. Tool messages are identified by `tools.call_id`.
@@ -46,8 +46,20 @@ lua/codecompanion/_extensions/toolresults/init.lua
 lua/codecompanion_toolresults/init.lua
   Lifecycle wiring, state, keymap, orchestration
 
+lua/codecompanion_toolresults/display.lua
+  Result lookup handoff, managed float lifecycle, cursor placement, and float-local mappings
+
+lua/codecompanion_toolresults/navigation.lua
+  Ordered next/previous result index navigation
+
 lua/codecompanion_toolresults/position.lua
   Rendered line detection and cursor lookup
+
+lua/codecompanion_toolresults/diagnostics.lua
+  On-demand runtime state and buffer diagnostic dump
+
+lua/codecompanion_toolresults/renderers.lua
+  Renderer registry, fallback rendering, and tool-specific result presentation
 
 ### ADAPTERS - directly reference codecompanion core logic that is not necessary set in stone
 
@@ -110,7 +122,8 @@ The float title includes the ordered result position, such as `Tool Result: read
 
 Next and previous navigation wraps around the ordered references. It does not depend on chat-buffer line positions. `gT` uses the float's stored `call_id`, reconciles current positions, closes the float, and returns to the corresponding visible chat line. `<Esc>` remains a separate close-only mapping. Closing the parent CodeCompanion chat closes its managed result float.
 
-The display module currently owns result rendering, float lifecycle, cursor placement, and float-local mappings. Stage 2 will separate rendering behind a small renderer interface while keeping lifecycle behavior unchanged.
+The display module owns result lookup handoff, float lifecycle, cursor placement, and float-local mappings. The renderer module owns result-to-lines conversion only. Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanion callbacks.
+
 
 ## Current limitations
 
@@ -120,8 +133,7 @@ The display module currently owns result rendering, float lifecycle, cursor plac
 - Exact per-tool post-insert observation would require a public CodeCompanion callback exposing the completed call ID or message.
 - The floating-window helper is an internal CodeCompanion API, but mapped via adapter.
 - Mouse hover is not implemented.
-- Rendering remains inside `display.lua` until a renderer registry is introduced.
-- `run_command` display formatting currently defaults to a `bash` command label, configurable via `run_command_language`; output uses a separate `text` block and other tools retain current string/non-string handling.
+- `run_command` display formatting currently defaults to a `bash` command label, configurable via `run_command_language`. Still requires some unintuitive user interaction.
 
 ## Development stages
 
@@ -134,15 +146,16 @@ The display module currently owns result rendering, float lifecycle, cursor plac
 - Rendered line tracking and configurable `gT` lookup.
 - Configurable next/previous navigation with `gtn` and `gtp`.
 - CodeCompanion-styled result float.
+- Renderer registry with fallback rendering and dedicated `run_command` rendering.
+- Runtime diagnostic dumps are available through `codecompanion.extensions.toolresults.dump()` and include current messages, references, tool indexes, and rendered chat-buffer content per tracked chat.
 
-### Next: renderer separation
 
-1. Move result rendering behind a small renderer interface while preserving current output.
-2. Add fallback rendering for tools without a specific renderer.
-3. Preserve `run_command` command-fence behavior and configurable `run_command_language`.
-4. Add tool-specific renderers later for `read_file`, `grep_search`, `search_grep`, and `insert_edit_into_file`.
-5. Investigate CodeCompanion's diff UI for edit tools.
-6. Add optional tool-call parameter display.
+### Next: tool-specific renderers
+
+1. Add renderers for `read_file`, `grep_search`, `search_grep`, and `insert_edit_into_file`.
+2. Preserve current output while adding each renderer.
+3. Investigate CodeCompanion's diff UI for edit tools.
+4. Add optional tool-call parameter display.
 
 ### Later work
 

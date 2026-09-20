@@ -18,6 +18,8 @@ Early development. Current implementation supports:
 - Float-local result navigation and close mappings.
 - Result position in the float title.
 - Safe float recreation after manual close.
+- Renderer registry with fallback rendering.
+- Dedicated `run_command` renderer with improved UX.
 
 ## Installation
 
@@ -106,6 +108,8 @@ The extension does not preserve removed output.
 
 ## Architecture
 
+The result renderer is separate from float lifecycle. `lua/codecompanion_toolresults/renderers.lua` selects a tool-specific renderer or fallback renderer and returns buffer lines. `display.lua` remains responsible for result lookup handoff, float lifecycle, cursor placement, and float-local mappings.
+
 See [`docs/concept.md`](docs/concept.md) for detailed design, data flow, boundaries, and planned work.
 
 ## Compatibility
@@ -114,7 +118,7 @@ The extension uses CodeCompanion's chat callbacks and message structure. It also
 
 CodeCompanion changes may require adapter updates.
 
-`run_command` formatting uses a local display-only code-fence formatter and does not assume a shell for execution.
+`run_command` formatting uses the renderer registry's display-only code-fence renderer and does not assume a shell for execution. Results from tools without a dedicated renderer use fallback string or `vim.inspect` formatting.
 
 ## Testing
 
