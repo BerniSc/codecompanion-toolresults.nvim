@@ -5,7 +5,22 @@ local diagnostics = require("codecompanion_toolresults.diagnostics")
 local ui = require("codecompanion_toolresults.adapters.ui")
 
 local position = require("codecompanion_toolresults.position")
+local display = require("codecompanion_toolresults.display")
 
+---@class CodeCompanionToolresults.FloatState
+---@field bufnr integer
+---@field winnr integer
+---@field index integer
+
+---@class CodeCompanionToolresults.ChatState
+---@field bufnr integer
+---@field chat table
+---@field references table[]
+---@field messages table[]
+---@field tools table<string, table>
+---@field float CodeCompanionToolresults.FloatState?
+
+---@type table<integer, CodeCompanionToolresults.ChatState>
 local state_by_bufnr = {}
 local configured = false
 
@@ -15,6 +30,10 @@ local defaults = {
   keymap = "gT",
   next_keymap = "gtn",
   previous_keymap = "gtp",
+  float_next_keymap = "]t",
+  float_previous_keymap = "[t",
+  float_close_keymap = "q",
+  float_escape_keymap = "<Esc>",
   run_command_language = "bash", -- Display command snippets as bash; change label or set false to keep raw output.
 }
 
@@ -223,46 +242,6 @@ local function navigate_tool_reference(chat_state, direction)
   vim.api.nvim_win_set_cursor(0, { scroll_target.line, 0 })
 end
 
----Format content as a fenced Markdown code block.
----
----Use at least four backticks and grow fence length when content contains
----longer backtick runs, so embedded Markdown remains literal.
----@param content any Content to format.
----@param language? string Optional fence language label.
----@return string Markdown code block.
-local function format_codeblock(content, language)
-  content = tostring(content)
-  language = type(language) == "string" and language:match("^[^\r\n]*") or ""
-
-  local longest_fence = 0
-  for backticks in content:gmatch("`+") do
-    longest_fence = math.max(longest_fence, #backticks)
-  end
-
-  local fence = string.rep("`", math.max(4, longest_fence + 1))
-  local suffix = content:sub(-1) == "\n" and "" or "\n"
-  return string.format("%s%s\n%s%s%s", fence, language, content, suffix, fence)
-end
-
----@param result table Current tool result.
----@param command string? Command extracted during message reconciliation.
----@param language string|false Language used for the command code fence.
----@return string
-local function format_run_command_result(result, command, language)
-  local content = result.content
-  if type(content) ~= "string" then
-    content = vim.inspect(content)
-  end
-
-  if type(command) ~= "string" or not language then
-    return content
-  end
-
-  local output = adapter.remove_run_command_prefix(content, command)
-  return string.format("%s\n%s", format_codeblock(command, language), output)
-end
-
-
 ---Display the current tool result under the cursor.
 ---@param chat_state table Per-chat extension state.
 ---@return nil
@@ -272,48 +251,22 @@ local function display_tool_reference(chat_state)
   -- display at a certain line to ensure there is in fact a toolcall there.
   refresh_positions(chat_state)
 
-  -- 1-based line coordinate of cursor in current window
+  -- 1-based line coordinate of cursor in current window.
   local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
 
   -- TODO Think about maybe sorting/persisting state. Maybe bad for refreshes, but sorting and persisting could improve
   -- O(n) lookup time on average. We are most likely to lookup tools that are close the the end of the chat and order is
   -- unlikely to change anyhow
-  local reference = position.find_reference_at_line(chat_state.references, cursor_line)
+  local reference, index = position.find_reference_at_line(chat_state.references, cursor_line)
   if not reference then
-    -- Always display -> No "notify" but direct vim.notify
+    -- Always display directly; do not route this through debug logging.
     vim.notify("No tool call on current line", vim.log.levels.INFO)
     return
   end
 
-  -- Map result
-  local result = adapter.find_tool_result(chat_state.messages, reference.call_id)
-  if not result then
-    -- Always display -> No "notify" but direct vim.notify
-    vim.notify(string.format("Tool result unavailable: %s (%s)", reference.name or "?", short(reference.call_id)), vim.log.levels.WARN)
-    return
-  end
-
-  local content
-  if reference.name == "run_command" then
-    -- Keep command formatting isolated to run_command; read/write tools remain unchanged.
-    -- Reserve handling them for example using CodeCompanions Diff later on.
-    content = format_run_command_result(result, reference.command, M._opts.run_command_language)
-  else
-    content = result.content
-    if type(content) ~= "string" then
-      content = vim.inspect(content)
-    end
-  end
-
-  local lines = vim.split(content, "\n", { plain = true })
-  local _, result_window = ui.create_float(lines, {
-    title = string.format("Tool Result: %s", result.name or "unknown"),
-  })
-
-  -- avoid placing cursor in fence, this feels annyoing in rendermarkdown as it disables hiding the fences
-  if reference.name == "run_command" and reference.command and M._opts.run_command_language then
-    vim.api.nvim_win_set_cursor(result_window, { 2, 0 })
-  end
+  assert(index, "toolreference lookup returned no index")
+  -- Resolve and render the current result through the display module.
+  display.show(chat_state, reference, index, M._opts, adapter, ui, reconcile_messages)
 end
 
 --- --------------------
@@ -333,12 +286,14 @@ local function attach_to_chat(chat, bufnr)
     return
   end
 
+  ---@type CodeCompanionToolresults.ChatState
   local chat_state = {
     bufnr = bufnr,
     chat = chat,
     references = {},
     messages = chat.messages or {},
     tools = {},
+    float = nil,
   }
 
   state_by_bufnr[bufnr] = chat_state
@@ -382,7 +337,13 @@ local function attach_to_chat(chat, bufnr)
   end)
 
   -- Discard per-chat state when CodeCompanion permanently closes the chat.
+  -- The callback closes over this chat's state object. This is intentional: the registry entry could
+  -- be replaced or removed before the callback runs.
   chat:add_callback("on_closed", function()
+    if chat_state.float then
+      ui.close_float(chat_state.float.bufnr, chat_state.float.winnr)
+      chat_state.float = nil
+    end
     state_by_bufnr[bufnr] = nil
     notify(string.format("chat closed: bufnr=%d", bufnr))
   end)
