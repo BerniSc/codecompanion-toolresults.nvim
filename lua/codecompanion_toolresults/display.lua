@@ -65,39 +65,74 @@ local function render_result(adapter, reference, result, opts)
   return vim.split(content, "\n", { plain = true })
 end
 
+---@param reference table Tool reference.
+---@param lines string[] Rendered result lines.
+---@param opts table Extension options.
+---@return boolean
+local function should_position_cursor(reference, lines, opts)
+  return reference.name == "run_command" and reference.command ~= nil
+    and opts.run_command_language ~= nil and opts.run_command_language ~= false
+    and #lines > 0
+end
+
+---@param winnr integer Float window number.
+---@param reference table Tool reference.
+---@param lines string[] Rendered result lines.
+---@param opts table Extension options.
+local function position_cursor(winnr, reference, lines, opts)
+  if not should_position_cursor(reference, lines, opts) then
+    return
+  end
+
+  -- Avoid placing cursor in fence, this feels annoying in render-markdown as it disables hiding the fences.
+  vim.api.nvim_win_set_cursor(winnr, { math.min(2, #lines), 0 })
+end
+
+---@param result table Current tool result.
+---@param index integer Reference index.
+---@param reference_count integer Number of ordered references.
+---@return string
+local function build_title(result, index, reference_count)
+  return string.format("Tool Result: %s [%d/%d]", result.name or "unknown", index, reference_count)
+end
+
 ---@param chat_state table Per-chat extension state.
 ---@param reference table Tool reference.
 ---@param index integer Reference index.
+---@param lines string[] Rendered result lines.
+---@param title string Float title.
 ---@param opts table Extension options.
----@param adapter table Message adapter.
 ---@param ui table UI adapter.
----@param reconcile fun(chat_state: table) Reconcile current chat messages.
----@return boolean displayed Whether the result was displayed.
-function M.show(chat_state, reference, index, opts, adapter, ui, reconcile)
-  local result = adapter.find_tool_result(chat_state.messages, reference.call_id)
-  if not result then
-    vim.notify(string.format("Tool result unavailable: %s (%s)", reference.name or "?", tostring(reference.call_id or "?")), vim.log.levels.WARN)
+---@return boolean updated Whether an existing float was updated.
+local function update_float(chat_state, reference, index, lines, title, opts, ui)
+  local float = chat_state.float
+  -- Return false when no managed float exists or its window/buffer was manually closed. The caller then closes stale
+  -- state and recreates the managed float.
+  if not float or not ui.update_float(float.bufnr, float.winnr, lines, { title = title }) then
     return false
   end
 
-  local lines = render_result(adapter, reference, result, opts)
-  local title = string.format("Tool Result: %s [%d/%d]", result.name or "unknown", index, #chat_state.references)
-  local float = chat_state.float
+  float.index = index
+  position_cursor(float.winnr, reference, lines, opts)
+  return true
+end
 
-  if float and ui.update_float(float.bufnr, float.winnr, lines, { title = title }) then
-    float.index = index
-    if reference.name == "run_command" and reference.command and opts.run_command_language then
-      vim.api.nvim_win_set_cursor(float.winnr, { math.min(2, #lines), 0 })
-    end
-    return true
-  end
-
-  if float then
-    ui.close_float(float.bufnr, float.winnr)
+---@param chat_state table Per-chat extension state.
+---@param reference table Tool reference.
+---@param index integer Reference index.
+---@param lines string[] Rendered result lines.
+---@param title string Float title.
+---@param opts table Extension options.
+---@param ui table UI adapter.
+---@param adapter table Message adapter.
+---@param reconcile fun(chat_state: table) Reconcile current chat messages.
+local function create_float(chat_state, reference, index, lines, title, opts, ui, adapter, reconcile)
+  if chat_state.float then
+    ui.close_float(chat_state.float.bufnr, chat_state.float.winnr)
   end
 
   local bufnr, winnr = ui.create_float(lines, { title = title })
-  float = { bufnr = bufnr, winnr = winnr, index = index }
+  local float = { bufnr = bufnr, winnr = winnr, index = index }
   chat_state.float = float
 
   local function close()
@@ -115,6 +150,8 @@ function M.show(chat_state, reference, index, opts, adapter, ui, reconcile)
     reconcile(chat_state)
     local next_index = navigation.next_index(chat_state.references, float.index, direction)
     if next_index then
+      -- Keep the injected dependencies explicit for testability. If this list grows,
+      -- group them into a display context rather than hiding them in global state.
       M.show(chat_state, chat_state.references[next_index], next_index, opts, adapter, ui, reconcile)
     end
   end
@@ -131,11 +168,36 @@ function M.show(chat_state, reference, index, opts, adapter, ui, reconcile)
     end
   end
 
-  -- Avoid placing cursor in fence, this feels annoying in render-markdown as it disables hiding the fences.
-  if reference.name == "run_command" and reference.command and opts.run_command_language then
-    vim.api.nvim_win_set_cursor(winnr, { math.min(2, #lines), 0 })
+  position_cursor(winnr, reference, lines, opts)
+end
+
+---Display one tool result, reusing the chat's managed float when possible.
+---
+---The explicit dependencies keep CodeCompanion integration at the call boundary
+---and make this module straightforward to test without global plugin state.
+---@param chat_state table Per-chat extension state.
+---@param reference table Tool reference.
+---@param index integer Reference index.
+---@param opts table Extension options.
+---@param adapter table Message adapter.
+---@param ui table UI adapter.
+---@param reconcile fun(chat_state: table) Reconcile current chat messages.
+---@return boolean displayed Whether the result was displayed.
+function M.show(chat_state, reference, index, opts, adapter, ui, reconcile)
+  local result = adapter.find_tool_result(chat_state.messages, reference.call_id)
+  if not result then
+    vim.notify(string.format("Tool result unavailable: %s (%s)", reference.name or "?", tostring(reference.call_id or "?")), vim.log.levels.WARN)
+    return false
   end
 
+  local lines = render_result(adapter, reference, result, opts)
+  local title = build_title(result, index, #chat_state.references)
+
+  if update_float(chat_state, reference, index, lines, title, opts, ui) then
+    return true
+  end
+
+  create_float(chat_state, reference, index, lines, title, opts, ui, adapter, reconcile)
   return true
 end
 
