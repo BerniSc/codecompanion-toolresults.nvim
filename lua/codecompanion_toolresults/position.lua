@@ -48,17 +48,28 @@ local function matching_label_end(lines, start_line_number, reference)
   -- This can render one expected label across several buffer lines. In that case we still want to match, but include the
   -- following data as well. For this we match every segment in order.
   local label_lines = vim.split(label, "\n", { plain = true })
-  if start_line_number + #label_lines - 1 > #lines then
-    return nil
-  end
+  if start_line_number + #label_lines - 1 <= #lines then
+    local matches_multiline = true
 
-  for offset, label_line in ipairs(label_lines) do
-    if lines[start_line_number + offset - 1] ~= label_line then
-      return nil
+    for offset, label_line in ipairs(label_lines) do
+      if lines[start_line_number + offset - 1] ~= label_line then
+        matches_multiline = false
+        break
+      end
+    end
+
+    if matches_multiline then
+      return start_line_number + #label_lines - 1
     end
   end
 
-  return start_line_number + #label_lines - 1
+  -- CodeCompanion may flatten embedded command newlines to spaces in the chat buffer.
+  local flattened_label = label:gsub("\r?\n", " ")
+  if lines[start_line_number] == flattened_label then
+    return start_line_number
+  end
+
+  return nil
 end
 
 ---Find rendered line positions for tool references.
