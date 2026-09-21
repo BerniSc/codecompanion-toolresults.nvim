@@ -6,43 +6,50 @@ local T = MiniTest.new_set()
 T["build_winbar"] = MiniTest.new_set()
 
 local defaults = {
-  float_show_keymaps = true,
-  float_next_keymap = "]t",
-  float_previous_keymap = "[t",
-  float_return_keymap = "gT",
-  float_close_keymap = "q",
-  float_escape_keymap = "<Esc>",
+  keymaps = {
+    float = {
+      next = "<Tab>",
+      previous = "<S-Tab>",
+      return_to_chat = "gT",
+      close = "q",
+      escape = "<Esc>",
+    },
+  },
+  float = {
+    show_keymaps = true,
+  },
 }
 
-T["build_winbar"]["centers configured mappings"] = function()
+T["build_winbar"]["uses nested keymap options"] = function()
   MiniTest.expect.equality(
     display._build_winbar(defaults),
-    "%=]t Next   [t Previous   gT Return   q Close   <Esc> Close%="
+    "%=<Tab> Next   <S-Tab> Previous   gT Return   q Close   <Esc> Close%="
   )
 end
 
 T["build_winbar"]["returns nil when disabled"] = function()
-  local opts = vim.tbl_extend("force", defaults, { float_show_keymaps = false })
+  local opts = vim.deepcopy(defaults)
+  opts.float.show_keymaps = false
   MiniTest.expect.equality(display._build_winbar(opts), nil)
 end
 
 T["build_winbar"]["omits disabled mappings"] = function()
-  local opts = vim.tbl_extend("force", defaults, {
-    float_next_keymap = false,
-    float_escape_keymap = false,
-  })
+  local opts = vim.deepcopy(defaults)
+  opts.keymaps.float.next = false
+  opts.keymaps.float.escape = false
 
   MiniTest.expect.equality(
     display._build_winbar(opts),
-    "%=[t Previous   gT Return   q Close%="
+    "%=<S-Tab> Previous   gT Return   q Close%="
   )
 end
 
 T["build_winbar"]["escapes percent signs in mappings"] = function()
-  local opts = vim.tbl_extend("force", defaults, { float_return_keymap = "g%T" })
+  local opts = vim.deepcopy(defaults)
+  opts.keymaps.float.return_to_chat = "g%T"
   MiniTest.expect.equality(
     display._build_winbar(opts),
-    "%=]t Next   [t Previous   g%%T Return   q Close   <Esc> Close%="
+    "%=<Tab> Next   <S-Tab> Previous   g%%T Return   q Close   <Esc> Close%="
   )
 end
 
