@@ -141,6 +141,45 @@ function M.remove_run_command_prefix(content, command)
   return content
 end
 
+---Remove CodeCompanion truncation notices from result content for display.
+---
+---The exact markers belong to the CodeCompanion adapter boundary rather than renderers.
+---@param content string Tool result content.
+---@return string clean_content
+---@return string? notice The final truncation notice, if present.
+local function remove_truncation_notice(content)
+  local patterns = {
+    "^(.-)\n\n(%[Tool output truncated:.-%])%s*$",
+    "^(.-)\n\n(%[Truncated at .-%])%s*$",
+    "^(.-)\n\n(%.%.%.%[truncated%])%s*$",
+  }
+
+  for _, pattern in ipairs(patterns) do
+    -- will return the captures.
+    local clean_content, notice = content:match(pattern)
+    if notice then
+      return clean_content, notice
+    end
+  end
+
+  return content, nil
+end
+
+--- TODO Consider moving result normalization into a dedicated `adapters/results.lua` module.
+--- `messages.lua` currently owns it because the formats are CodeCompanion-specific.
+---Normalize result content for renderer presentation.
+---@param content any Tool result content.
+---@return string clean_content
+---@return table metadata
+function M.normalize_result(content)
+  if type(content) ~= "string" then
+    return vim.inspect(content), { truncation_notice = nil }
+  end
+
+  local clean_content, notice = remove_truncation_notice(content)
+  return clean_content, { truncation_notice = notice }
+end
+
 ---Find the current tool result for a call ID.
 ---@param messages table[] Current CodeCompanion message stack.
 ---@param call_id string Tool-call identifier.
