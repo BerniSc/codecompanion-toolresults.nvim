@@ -84,8 +84,11 @@ local function index_tool_commands(messages)
         arguments = ok and decoded or nil
       end
 
-      if call.id and function_call.name == "run_command" and type(arguments) == "table" and type(arguments.cmd) == "string" then
-        cmds_by_id[call.id] = arguments.cmd
+      if function_call.name == "run_command" and type(arguments) == "table" and type(arguments.cmd) == "string" then
+        local call_id = call.call_id or call.id
+        if call_id then
+          cmds_by_id[call_id] = arguments.cmd
+        end
       end
     end
   end

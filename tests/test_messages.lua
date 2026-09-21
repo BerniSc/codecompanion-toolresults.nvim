@@ -23,6 +23,77 @@ T["tool_references"]["extracts a single run_command"] = function()
                            single_run_command.expected_references)
 end
 
+T["tool_references"]["supports the standard call ID form"] = function()
+  local references = messages.tool_references({
+    {
+      role = "llm",
+      tools = {
+        calls = {
+          {
+            id = "call-standard",
+            ["function"] = {
+              name = "run_command",
+              arguments = '{"cmd":"find /tmp/hallo -type f","flag":null}',
+            },
+          },
+        },
+      },
+    },
+    {
+      role = "tool",
+      tools = { call_id = "call-standard", name = "run_command" },
+      content = "`find /tmp/hallo -type f`\noutput",
+    },
+  })
+
+  MiniTest.expect.equality(references, {
+    {
+      call_id = "call-standard",
+      name = "run_command",
+      command = "find /tmp/hallo -type f",
+      message_id = nil,
+      message_index = nil,
+      status = "available",
+    },
+  })
+end
+
+T["tool_references"]["supports the Luna call ID form"] = function()
+  local references = messages.tool_references({
+    {
+      role = "llm",
+      tools = {
+        calls = {
+          {
+            id = "opaque-provider-id",
+            call_id = "call-luna",
+            ["function"] = {
+              name = "run_command",
+              arguments = '{"cmd":"find /tmp/hallo -type f","flag":null}',
+            },
+          },
+        },
+      },
+    },
+    {
+      role = "tool",
+      tools = { call_id = "call-luna", name = "run_command" },
+      content = "`find /tmp/hallo -type f`\noutput",
+    },
+  })
+
+  MiniTest.expect.equality(references, {
+    {
+      call_id = "call-luna",
+      name = "run_command",
+      command = "find /tmp/hallo -type f",
+      message_id = nil,
+      message_index = nil,
+      status = "available",
+    },
+  })
+end
+
 T["tool_references"]["keeps repeated tool names separate"] = function()
   MiniTest.expect.equality(messages.tool_references(repeated_tool.messages),
                            repeated_tool.expected_references)

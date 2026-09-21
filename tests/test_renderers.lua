@@ -92,4 +92,10 @@ T["run_command"]["grows fence around embedded backticks"] = function()
     "`````text\na````b\n`````")
 end
 
+T["run_command"]["renders a bash command block and preserves output"] = function()
+  MiniTest.expect.equality(renderers.render({ name = "run_command", command = "find /tmp/hallo -type f" },
+        { content = "`find /tmp/hallo -type f`\n````\n/tmp/hallo/1\n/tmp/hallo/2\n````" }, opts, context),
+    { "````bash", "find /tmp/hallo -type f", "````", "````", "/tmp/hallo/1", "/tmp/hallo/2", "````" })
+end
+
 return T
