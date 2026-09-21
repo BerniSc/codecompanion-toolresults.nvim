@@ -191,6 +191,26 @@ T["find_tool_lines"]["distinguishes escaped backslash-n from rendered newline"] 
   vim.api.nvim_buf_delete(bufnr, { force = true })
 end
 
+T["find_tool_lines"]["matches a command flattened after embedded newlines"] = function()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+    "run_command: cat << EOF a b EOF",
+    "Following response",
+  })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, {
+    {
+      call_id = "call-heredoc",
+      name = "run_command",
+      command = "cat << EOF\na\nb\nEOF",
+    },
+  })
+
+  MiniTest.expect.equality(positions, { ["call-heredoc"] = 1 })
+  MiniTest.expect.equality(diagnostics, { unresolved = {}, ambiguous = 0 })
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
 T["find_tool_lines"]["matches each newline escape depth correctly"] = function()
   local bufnr = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
