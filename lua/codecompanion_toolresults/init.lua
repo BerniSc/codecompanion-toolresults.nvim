@@ -271,7 +271,7 @@ local function display_tool_reference(chat_state)
   local reference, index = position.find_reference_at_line(chat_state.references, cursor_line)
   if not reference then
     -- Always display directly; do not route this through debug logging.
-    vim.notify("No tool call on current line", vim.log.levels.INFO)
+    vim.notify("No tool result on current line. Move to a tool label or use next/previous navigation.", vim.log.levels.INFO)
     return
   end
 

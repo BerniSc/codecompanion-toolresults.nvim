@@ -93,7 +93,7 @@ local function return_to_chat(chat_state, call_id, reconcile, close)
   local reference = chat_state.tools[call_id]
   if not reference or not reference.line then
     close()
-    vim.notify("Tool call location unavailable", vim.log.levels.WARN)
+    vim.notify("Tool call location unavailable in the current chat.", vim.log.levels.WARN)
     return
   end
 
