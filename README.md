@@ -30,15 +30,23 @@ extensions = {
   toolresults = {
     enabled = true,
     opts = {
-      keymap = "gT",
-      next_keymap = "gtn",
-      previous_keymap = "gtp",
-      float_next_keymap = "]t",
-      float_previous_keymap = "[t",
-      float_close_keymap = "q",
-      float_escape_keymap = "<Esc>",
-      float_return_keymap = "gT",
-      float_show_keymaps = true,
+      keymaps = {
+        chat = {
+          show = "gT",
+          next = "gtn",
+          previous = "gtp",
+        },
+        float = {
+          next = "<Tab>",
+          previous = "<S-Tab>",
+          close = "q",
+          escape = "<Esc>",
+          return_to_chat = "gT",
+        },
+      },
+      float = {
+        show_keymaps = true,
+      },
       run_command_language = "bash", -- Display command snippets as bash; change label or set false to keep raw output.
     },
   },
@@ -52,17 +60,17 @@ The extension reuses one managed result float per chat. Displaying another resul
 
 While focused inside the float:
 
-- `]t` shows the next result.
-- `[t` shows the previous result.
+- `<Tab>` shows the next result.
+- `<S-Tab>` shows the previous result.
 - `q` closes the float.
 - `<Esc>` closes the float.
 - `gT` closes the float and returns to the corresponding tool-call line in the chat.
 
 Navigation wraps from last result to first and from first result to last. It uses ordered tool references, independently of chat-buffer cursor position. If the float is manually closed, the next display or navigation action recreates it safely. Closing the parent chat also closes its managed result float.
 
-Mappings are configurable with `float_next_keymap`, `float_previous_keymap`, `float_close_keymap`, `float_escape_keymap`, and `float_return_keymap`. Set an option to `false` to disable its mapping.
+Mappings are configurable under `keymaps.float`: `next`, `previous`, `close`, `escape`, and `return_to_chat`. Set an option to `false` to disable its mapping.
 
-The optional winbar displays configured float-local mappings at the top of the result window. Keymap options set to `false` are not shown. Set `float_show_keymaps = false` to hide the winbar while keeping keymap behavior unchanged.
+The optional winbar displays configured float-local mappings at the top of the result window. Keymap options set to `false` are not shown. Set `float.show_keymaps = false` to hide the winbar while keeping keymap behavior unchanged.
 
 
 ## Usage
@@ -85,15 +93,15 @@ For purposes of copying:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `keymap` | `"gT"` | Chat-buffer keymap for displaying a result. Set to `false` to disable. |
-| `next_keymap` | `"gtn"` | Chat-buffer keymap for moving to next tool result. Set to `false` to disable. |
-| `previous_keymap` | `"gtp"` | Chat-buffer keymap for moving to previous tool result. Set to `false` to disable. |
-| `float_next_keymap` | `"]t"` | Float-local next-result mapping. Set to `false` to disable. |
-| `float_previous_keymap` | `"[t"` | Float-local previous-result mapping. Set to `false` to disable. |
-| `float_close_keymap` | `"q"` | Float-local close mapping. Set to `false` to disable. |
-| `float_escape_keymap` | `"<Esc>"` | Float-local Escape mapping. Set to `false` to disable. |
-| `float_return_keymap` | `"gT"` | Float-local mapping that closes the result float and returns to its originating tool-call line. Set to `false` to disable. |
-| `float_show_keymaps` | `true` | Show float-local mappings in the result window winbar. |
+| `keymaps.chat.show` | `"gT"` | Chat-buffer keymap for displaying a result. Set to `false` to disable. |
+| `keymaps.chat.next` | `"gtn"` | Chat-buffer keymap for moving to next tool result. Set to `false` to disable. |
+| `keymaps.chat.previous` | `"gtp"` | Chat-buffer keymap for moving to previous tool result. Set to `false` to disable. |
+| `keymaps.float.next` | `"<Tab>"` | Float-local next-result mapping. Set to `false` to disable. |
+| `keymaps.float.previous` | `"<S-Tab>"` | Float-local previous-result mapping. Set to `false` to disable. |
+| `keymaps.float.close` | `"q"` | Float-local close mapping. Set to `false` to disable. |
+| `keymaps.float.escape` | `"<Esc>"` | Float-local Escape mapping. Set to `false` to disable. |
+| `keymaps.float.return_to_chat` | `"gT"` | Float-local mapping that closes result float and returns to its originating tool-call line. Set to `false` to disable. |
+| `float.show_keymaps` | `true` | Show float-local mappings in result window winbar. |
 | `run_command_language` | `"bash"` | Language label for displayed `run_command` commands. Set to another shell or `false`; default is only a display label, not a shell assumption. |
 | `debug` | `false` | Enable lifecycle and reference logging. |
 | `debug_buffer` | `false` | Log rendered chat-buffer lines and calculated positions. |

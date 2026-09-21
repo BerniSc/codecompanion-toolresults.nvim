@@ -6,7 +6,7 @@ local renderers = require("codecompanion_toolresults.renderers")
 ---@param opts table Extension options.
 ---@return string? winbar Formatted winbar, or nil when disabled.
 local function build_winbar(opts)
-  if not opts.float_show_keymaps then
+  if not opts.float.show_keymaps then
     return nil
   end
 
@@ -17,11 +17,11 @@ local function build_winbar(opts)
     end
   end
 
-  add(opts.float_next_keymap, "Next")
-  add(opts.float_previous_keymap, "Previous")
-  add(opts.float_return_keymap, "Return")
-  add(opts.float_close_keymap, "Close")
-  add(opts.float_escape_keymap, "Close")
+  add(opts.keymaps.float.next, "Next")
+  add(opts.keymaps.float.previous, "Previous")
+  add(opts.keymaps.float.return_to_chat, "Return")
+  add(opts.keymaps.float.close, "Close")
+  add(opts.keymaps.float.escape, "Close")
 
   -- Center the result, make sure to escape keymaps containing % signs.
   local text = table.concat(mappings, "   ")
@@ -156,11 +156,11 @@ local function create_float(chat_state, reference, index, lines, title, opts, ui
   end
 
   local mappings = {
-    { "n", opts.float_next_keymap, function() move(1) end, "Next tool result" },
-    { "n", opts.float_previous_keymap, function() move(-1) end, "Previous tool result" },
-    { "n", opts.float_close_keymap, close, "Close tool result" },
-    { "n", opts.float_escape_keymap, close, "Close tool result" },
-    { "n", opts.float_return_keymap, function() return_to_chat(chat_state, float.call_id, reconcile, close) end, "Return to tool call" },
+    { "n", opts.keymaps.float.next, function() move(1) end, "Next tool result" },
+    { "n", opts.keymaps.float.previous, function() move(-1) end, "Previous tool result" },
+    { "n", opts.keymaps.float.close, close, "Close tool result" },
+    { "n", opts.keymaps.float.escape, close, "Close tool result" },
+    { "n", opts.keymaps.float.return_to_chat, function() return_to_chat(chat_state, float.call_id, reconcile, close) end, "Return to tool call" },
   }
   for _, mapping in ipairs(mappings) do
     if mapping[2] then
