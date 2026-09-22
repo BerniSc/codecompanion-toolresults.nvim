@@ -1,29 +1,30 @@
 # CodeCompanion Toolresults
 
-CodeCompanion extension for viewing tool results on demand, without adding full tool output to the chat buffer.
+Keep CodeCompanion chats readable while retaining access to tool results.
 
-Based on the discussion in [CodeCompanion discussion #3360](https://github.com/olimorris/codecompanion.nvim/discussions/3360).
+Tool calls remain compact in the conversation. When you want more context, open the result behind a search, file read, command, or edit without bringing every line of output back into the chat.
 
-## Status
+Follow what the agent found, check its work, or catch it heading in the wrong direction, while keeping the conversation easy to scan.
 
-Early development. Current implementation supports:
+Place the cursor on a tool call and press `gT` to inspect its result. Use `gtn` and `gtp` in the chat to jump between tool calls.
 
-- CodeCompanion extension loading.
-- Per-chat tool-call observation.
-- Partial lookup in batched calls.
-- Cursor-based lookup with `gT`.
-- Configurable cursor navigation with `gtn` and `gtp`.
-- Inheriting CodeCompanions floating-window dimensions and options.
-- One reusable managed result float per chat.
-- Float-local result navigation and close mappings.
-- Result position in the float title.
-- Safe float recreation after manual close.
-- Renderer registry with fallback rendering.
-- Dedicated `run_command` renderer with improved UX.
+Inside the result float, use `<Tab>` and `<S-Tab>` to browse results, or press `gT` to return to the tool call.
+
+## Demo
 
 ## Installation
 
-Install with your Neovim plugin manager alongside CodeCompanion. Configure the extension inside `require("codecompanion").setup`:
+Install with your Neovim plugin manager alongside CodeCompanion. Defaults work without further configuration:
+
+````lua
+extensions = {
+  toolresults = {
+    enabled = true,
+  },
+},
+````
+
+Customise the extension inside `require("codecompanion").setup` when needed:
 
 ````lua
 extensions = {
@@ -53,6 +54,42 @@ extensions = {
 },
 ````
 
+## Current scope
+
+The extension lets you inspect and navigate current tool results in a per-chat floating window. It reads CodeCompanion's current messages rather than keeping its own output history. Results changed or removed by context management are therefore changed or unavailable here too.
+
+Features:
+
+- CodeCompanion extension loading.
+- Per-chat tool-call observation.
+- Partial lookup in batched calls.
+- Cursor-based lookup with `gT`.
+- Configurable cursor navigation with `gtn` and `gtp`.
+- Inheriting CodeCompanions floating-window dimensions and options.
+- One reusable managed result float per chat.
+- Float-local result navigation and close mappings.
+- Result position in the float title.
+- Safe float recreation after manual close.
+- Renderer registry with fallback rendering.
+- Tool-specific renderers for common file, search, command, and diagnostic results.
+
+## Usage
+
+1. Open a CodeCompanion chat.
+2. Allow one or more tools to run.
+3. Move the cursor to a rendered tool-call line, such as `run_command: date`.
+4. Press `gT` to display its result. Use `gtn` to move to the next tool-call line or `gtp` to move to the previous one.
+
+The current result opens in a floating window. The result is looked up from CodeCompanion's current message stack when requested; this extension does not maintain a second output history.
+This means it will match CodeCompanions context management.
+
+For runtime issues, call `codecompanion.extensions.toolresults.dump()` from inside Neovim. It writes a focused, on-demand diagnostic snapshot to a unique temporary directory and returns the directory path. Each tracked chat gets separate `messages.json`, `references.json`, `tools.json`, `buffer-metadata.json`, and human-readable `buffer.txt` files. Message content may contain sensitive data; inspect the files before sharing them.
+
+For purposes of copying:
+
+`
+:lua print(require("codecompanion").extensions.toolresults.dump())
+`
 
 ## Result float
 
@@ -72,22 +109,6 @@ Mappings are configurable under `keymaps.float`: `next`, `previous`, `close`, `e
 
 The optional winbar displays configured float-local mappings at the top of the result window. Keymap options set to `false` are not shown. Set `float.show_keymaps = false` to hide the winbar while keeping keymap behavior unchanged.
 
-
-## Usage
-
-1. Open a CodeCompanion chat.
-2. Allow one or more tools to run.
-3. Move the cursor to a rendered tool-call line, such as `run_command: date`.
-4. Press `gT` to display its result. Use `gtn` to move to the next tool-call line or `gtp` to move to the previous one.
-
-The current result opens in a floating window. The result is looked up from CodeCompanion's current message stack when requested; this extension does not maintain a second output history.
-This means it will match CodeCompanions context management.
-
-For runtime issues, call `codecompanion.extensions.toolresults.dump()` from inside Neovim. It writes a focused, on-demand diagnostic snapshot to a unique temporary directory and returns the directory path. Each tracked chat gets separate `messages.json`, `references.json`, `tools.json`, `buffer-metadata.json`, and human-readable `buffer.txt` files. Message content may contain sensitive data; inspect the files before sharing them.
-For purposes of copying:
-`
-:lua print(require("codecompanion").extensions.toolresults.dump())
-`
 
 ## Options
 
@@ -151,4 +172,12 @@ make test_file FILE=tests/test_messages.lua
 ```
 
 Message adapter tests use both a more realistic CodeCompanion message-batch fixture and smaller atomic fixtures. The full fixture checks compatibility with real message structure; atomic fixtures keep individual behaviors easy to diagnose.
+
+## Acknowledgements
+
+Thanks to [Oli Morris](https://github.com/olimorris) for creating [CodeCompanion.nvim](https://github.com/olimorris/codecompanion.nvim), which made this extension possible.
+
+This extension grew out of [CodeCompanion discussion #3360](https://github.com/olimorris/codecompanion.nvim/discussions/3360).
+
+Feedback, compatibility reports, and ideas for useful result renderers are welcome.
 
