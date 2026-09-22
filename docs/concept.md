@@ -112,13 +112,15 @@ The extension does not create persistent tool-output history.
 
 The extension maintains one managed result float per chat. `gT` creates it when needed; later displays update the existing float. If the user closes the float manually, the next display or float-local navigation detects the invalid window and recreates it.
 
-The float title includes the ordered result position, such as `Tool Result: read_file [2/5]`. Float-local mappings are configurable:
+The float title includes the ordered result position, such as `Tool Result: read_file [2/5]`. Float-local mappings are configurable under `keymaps.float`:
 
-- `]t`: next result
-- `[t`: previous result
+- `<Tab>`: next result
+- `<S-Tab>`: previous result
 - `q`: close
 - `<Esc>`: close
 - `gT`: close the float and return to its originating tool-call line in the chat
+
+The chat mappings live under `keymaps.chat`. Set any mapping to `false` to disable it. `float.show_keymaps` controls whether float mappings appear in the winbar.
 
 Next and previous navigation wraps around the ordered references. It does not depend on chat-buffer line positions. `gT` uses the float's stored `call_id`, reconciles current positions, closes the float, and returns to the corresponding visible chat line. `<Esc>` remains a separate close-only mapping. Closing the parent CodeCompanion chat closes its managed result float.
 

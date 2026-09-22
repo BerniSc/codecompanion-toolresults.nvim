@@ -58,7 +58,7 @@ T["tool_references"]["supports the standard call ID form"] = function()
   })
 end
 
-T["tool_references"]["supports the Luna call ID form"] = function()
+T["tool_references"]["supports the Responses call ID form"] = function()
   local references = messages.tool_references({
     {
       role = "llm",
@@ -66,7 +66,7 @@ T["tool_references"]["supports the Luna call ID form"] = function()
         calls = {
           {
             id = "opaque-provider-id",
-            call_id = "call-luna",
+            call_id = "call-responses",
             ["function"] = {
               name = "run_command",
               arguments = '{"cmd":"find /tmp/hallo -type f","flag":null}',
@@ -77,14 +77,14 @@ T["tool_references"]["supports the Luna call ID form"] = function()
     },
     {
       role = "tool",
-      tools = { call_id = "call-luna", name = "run_command" },
+      tools = { call_id = "call-responses", name = "run_command" },
       content = "`find /tmp/hallo -type f`\noutput",
     },
   })
 
   MiniTest.expect.equality(references, {
     {
-      call_id = "call-luna",
+      call_id = "call-responses",
       name = "run_command",
       command = "find /tmp/hallo -type f",
       message_id = nil,

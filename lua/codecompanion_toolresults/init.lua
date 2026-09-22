@@ -28,15 +28,23 @@ local configured = false
 local defaults = {
   debug = false,
   debug_buffer = false,
-  keymap = "gT",
-  next_keymap = "gtn",
-  previous_keymap = "gtp",
-  float_next_keymap = "]t",
-  float_previous_keymap = "[t",
-  float_close_keymap = "q",
-  float_escape_keymap = "<Esc>",
-  float_return_keymap = "gT",
-  float_show_keymaps = true,
+  keymaps = {
+    chat = {
+      show = "gT",
+      next = "gtn",
+      previous = "gtp",
+    },
+    float = {
+      next = "<Tab>",
+      previous = "<S-Tab>",
+      close = "q",
+      escape = "<Esc>",
+      return_to_chat = "gT",
+    },
+  },
+  float = {
+    show_keymaps = true,
+  },
   run_command_language = "bash", -- Display command snippets as bash; change label or set false to keep raw output.
 }
 
@@ -263,7 +271,7 @@ local function display_tool_reference(chat_state)
   local reference, index = position.find_reference_at_line(chat_state.references, cursor_line)
   if not reference then
     -- Always display directly; do not route this through debug logging.
-    vim.notify("No tool call on current line", vim.log.levels.INFO)
+    vim.notify("No tool result on current line. Move to a tool label or use next/previous navigation.", vim.log.levels.INFO)
     return
   end
 
@@ -403,9 +411,9 @@ function M.setup(opts)
   local chat_keymaps = require("codecompanion.config").interactions.chat.keymaps
 
   -- if the main keymap is set merge it and set it up
-  if M._opts.keymap then
+  if M._opts.keymaps.chat.show then
     chat_keymaps.display_toolresults = {
-      modes = { n = M._opts.keymap, },
+      modes = { n = M._opts.keymaps.chat.show },
       description = "Display tool result under cursor",
 
       -- Resolve and display the tool result at the current cursor line.
@@ -424,12 +432,12 @@ function M.setup(opts)
 
   local navigation_keymaps = {
     next_toolresult = {
-      keymap = M._opts.next_keymap,
+      keymap = M._opts.keymaps.chat.next,
       direction = 1,
       description = "Go to next tool result",
     },
     previous_toolresult = {
-      keymap = M._opts.previous_keymap,
+      keymap = M._opts.keymaps.chat.previous,
       direction = -1,
       description = "Go to previous tool result",
     },
