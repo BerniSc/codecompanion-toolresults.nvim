@@ -12,6 +12,8 @@ Inside the result float, use `<Tab>` and `<S-Tab>` to browse results, or press `
 
 ## Demo
 
+https://github.com/user-attachments/assets/464935d3-c149-401c-8439-28025183f4f4
+
 ## Installation
 
 Install with your Neovim plugin manager alongside CodeCompanion. Defaults work without further configuration:
