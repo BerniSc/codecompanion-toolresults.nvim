@@ -4,14 +4,25 @@ local function rejection_base(line)
   return line:gsub(', with the reason: ".*"$', "")
 end
 
----Return the first rendered line of a declined-tool message.
+---Find recognized cancellation or rejection text in a tool result.
 ---@param content any Tool output content.
 ---@param name? string Tool name.
 ---@param command? string Parsed run_command command.
----@return string? line Rendered rejection line, or nil for ordinary output.
+---@return string? line Rejection text, or nil for ordinary output.
 local function invalidated_line(content, name, command)
   if type(content) ~= "string" then
     return nil
+  end
+
+  -- Multiline commands make the rejection span several lines. Match the exact
+  -- command text, then retain an optional reason attached to its closing line.
+  if name == "run_command" and type(command) == "string" and command:find("\n", 1, true) then
+    local rejection = string.format("The user rejected the execution of the `%s` command", command)
+    local _, rejection_end = content:find(rejection, 1, true)
+    if rejection_end then
+      local reason = content:sub(rejection_end + 1):match('^(, with the reason: "[^"]*")')
+      return rejection .. (reason or "")
+    end
   end
 
   for raw_line in content:gmatch("[^\r\n]+") do

@@ -136,4 +136,133 @@ T["rejected tool references"]["matches rejection reasons"] = function()
   MiniTest.expect.equality(references[1].status, "invalidated")
 end
 
+T["rejected tool references"]["matches dumped multiline rejection and rendered position"] = function()
+  local command = "echo << EOF\nLine 1\nLine 2\nEOF"
+  local rejection = 'The user rejected the execution of the `' .. command .. '` command, with the reason: "Thanks"'
+  local references = messages.tool_references({
+    {
+      role = "llm",
+      tools = {
+        calls = {
+          {
+            id = "call-dump-rejection",
+            ["function"] = {
+              name = "run_command",
+              arguments = vim.json.encode({ cmd = command, flag = nil }),
+            },
+          },
+        },
+      },
+    },
+    {
+      role = "tool",
+      tools = { call_id = "call-dump-rejection", name = "run_command" },
+      content = rejection,
+    },
+  })
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+    "The user rejected the execution of the `echo << EOF",
+    "Line 1",
+    'Line 2',
+    'EOF` command, with the reason: "Thanks"',
+  })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, references)
+
+  MiniTest.expect.equality(references[1].status, "invalidated")
+  MiniTest.expect.equality(references[1].invalidated_line, rejection)
+  MiniTest.expect.equality(positions, { ["call-dump-rejection"] = 1 })
+  MiniTest.expect.equality(diagnostics, { unresolved = {}, ambiguous = 0 })
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+T["rejected tool references"]["matches rejection reason after multiline command"] = function()
+  local command = "echo 'Here is a multiline\ntext example using heredoc << EOF\nLine 1\nLine 2\nEOF'"
+  local rejection = 'The user rejected the execution of the `' .. command .. '` command, with the reason: "No"'
+  local references = messages.tool_references({
+    {
+      role = "llm",
+      tools = {
+        calls = {
+          {
+            id = "call-reason-multiline",
+            ["function"] = {
+              name = "run_command",
+              arguments = vim.json.encode({ cmd = command }),
+            },
+          },
+        },
+      },
+    },
+    {
+      role = "tool",
+      tools = { call_id = "call-reason-multiline", name = "run_command" },
+      content = rejection
+        .. "\n\nThe attempt to execute the multiline command using `echo << EOF ...` was **rejected** with the reason: \"No\".",
+    },
+  })
+
+  MiniTest.expect.equality(references[1].status, "invalidated")
+  MiniTest.expect.equality(references[1].invalidated_line, "The user rejected the execution of the `" .. command .. "` command, with the reason: \"No\"")
+end
+
+T["rejected tool references"]["matches formatted rejected multiline commands"] = function()
+  local command = "cat << EOF\na\nb\nEOF"
+  local rejection = "The user rejected the execution of the `" .. command .. "` command"
+  local references = messages.tool_references({
+    {
+      role = "llm",
+      tools = {
+        calls = {
+          {
+            id = "call-formatted-multiline-rejected",
+            ["function"] = {
+              name = "run_command",
+              arguments = vim.json.encode({ cmd = command }),
+            },
+          },
+        },
+      },
+    },
+    {
+      role = "tool",
+      tools = { call_id = "call-formatted-multiline-rejected", name = "run_command" },
+      content = "**Error:**\n" .. rejection,
+    },
+  })
+
+  MiniTest.expect.equality(references[1].status, "invalidated")
+  MiniTest.expect.equality(references[1].invalidated_line, rejection)
+end
+
+T["rejected tool references"]["matches rejected multiline commands"] = function()
+  local command = "cat << EOF\na\nb\nEOF"
+  local references = messages.tool_references({
+    {
+      role = "llm",
+      tools = {
+        calls = {
+          {
+            id = "call-multiline-rejected",
+            ["function"] = {
+              name = "run_command",
+              arguments = vim.json.encode({ cmd = command }),
+            },
+          },
+        },
+      },
+    },
+    {
+      role = "tool",
+      tools = { call_id = "call-multiline-rejected", name = "run_command" },
+      content = "The user rejected the execution of the `" .. command .. "` command",
+    },
+  })
+
+  MiniTest.expect.equality(references[1].status, "invalidated")
+  MiniTest.expect.equality(references[1].command, command)
+  MiniTest.expect.equality(references[1].invalidated_line, "The user rejected the execution of the `" .. command .. "` command")
+end
+
 return T
