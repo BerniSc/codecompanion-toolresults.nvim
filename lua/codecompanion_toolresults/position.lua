@@ -123,16 +123,36 @@ function M.find_tool_lines(bufnr, references)
   return positions, diagnostics
 end
 
----Find the tool reference rendered on a specific line.
+---Find a tool reference based on the cursor line and configured selection mode.
 ---@param references table[] Tool references with current line positions.
----@param line integer 1-based buffer line.
+---@param line integer 1-based cursor line.
+---@param mode string One of `exact`, `nearest`, `above`, or `below`.
 ---@return table?, integer? Matching tool reference and its ordered index, or nil when absent.
-function M.find_reference_at_line(references, line)
+function M.find_reference_at_cursor(references, line, mode)
+  -- nil by default
+  local selected_reference, selected_index, selected_distance
+
   for index, reference in ipairs(references or {}) do
-    if reference.line == line then
-      return reference, index
+    if reference.line then
+      local distance = reference.line - line
+
+      if mode == "exact" and distance == 0 then
+        return reference, index
+      elseif mode == "above" and distance < 0 and (not selected_distance or distance > selected_distance) then
+        selected_reference, selected_index, selected_distance = reference, index, distance
+      elseif mode == "below" and distance > 0 and (not selected_distance or distance < selected_distance) then
+        selected_reference, selected_index, selected_distance = reference, index, distance
+      elseif mode == "nearest" then
+        local absolute_distance = math.abs(distance)
+        -- On equal distance, prefer reference above the cursor for stable selection (matches behaviour of just following output).
+        if not selected_distance or absolute_distance < selected_distance or (absolute_distance == selected_distance and distance < 0) then
+          selected_reference, selected_index, selected_distance = reference, index, absolute_distance
+        end
+      end
     end
   end
+
+  return selected_reference, selected_index
 end
 
 return M
