@@ -137,6 +137,40 @@ function M.tool_references(messages)
   return references
 end
 
+-- TODO Consolidate call scanning and argument decoding with index_tool_commands.
+---Find the current tool call for a call ID.
+---@param messages table[] Current CodeCompanion message stack.
+---@param call_id string Tool-call identifier.
+---@return table? Current tool-call data, including transient arguments.
+function M.find_tool_call(messages, call_id)
+  if not call_id then
+    return nil
+  end
+
+  for _, message in ipairs(messages or {}) do
+    for _, call in ipairs((message.tools and message.tools.calls) or {}) do
+      local call_identity = call.call_id or call.id
+      if call_identity == call_id then
+        local function_call = call["function"] or {}
+        local arguments = function_call.arguments
+
+        if type(arguments) == "string" then
+          local ok, decoded = pcall(vim.json.decode, arguments)
+          if ok then
+            arguments = decoded
+          end
+        end
+
+        return {
+          call_id = call_identity,
+          name = function_call.name or call.name,
+          arguments = arguments,
+        }
+      end
+    end
+  end
+end
+
 ---Remove CodeCompanion's inline command prefix from a `run_command` result.
 ---
 ---CodeCompanion currently stores the command before its formatted output.

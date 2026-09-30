@@ -44,6 +44,7 @@ local defaults = {
     float = {
       next = "<Tab>",
       previous = "<S-Tab>",
+      toggle_view = "K",
       close = "q",
       escape = "<Esc>",
       return_to_chat = "gT",
