@@ -17,7 +17,7 @@ This plugin stores references and presentation metadata only.
 5. `on_checkpoint` reconciles the complete current message stack.
 6. Tool messages are identified by `tools.call_id`.
 7. The rendered chat buffer is scanned for current tool-label lines.
-8. The user places the cursor on a tool-label line and presses `gT`.
+8. The user presses `gT`; configured `cursor.mode` selects a reference from the current cursor line and refreshed rendered positions (`exact` by default, or opt-in `nearest`, `above`, or `below`).
 9. The extension resolves the current result by `call_id`.
 10. The result opens in a CodeCompanion-styled floating window.
 
@@ -91,6 +91,8 @@ run_command: ls
 
 The position module reads the current buffer lines and matches references in message order. This supports repeated tool names as long as rendered order matches message order. Line numbers are recalculated instead of cached as identity. A full buffer scan is intentional: chat buffers are normally small, and it avoids stale positions after edits, new messages, or context management.
 
+After refreshing positions, `cursor.mode` resolves `gT` selection without changing label detection or tool identity. `exact` requires a label on the cursor line and is the default. `nearest` selects the closest visible label, preferring the one above on equal distance. `above` and `below` select the closest label strictly in that direction. Directional modes do not wrap; when no candidate exists, the extension reports a mode-specific message. Selection remains transient presentation behavior: results are still resolved from current CodeCompanion messages using `call_id`.
+
 ## UI integration
 
 `adapters/ui.lua` reads `config.display.chat.floating_window` and merges tool-result-specific values before calling CodeCompanion's `utils.ui.create_float`.
@@ -130,6 +132,7 @@ The display module owns result lookup handoff, float lifecycle, cursor placement
 ## Current limitations
 
 - Rendering detection depends on visible tool-label lines.
+- `nearest` cursor selection can choose an unintended result if cursor moves far from the intended tool label; exact selection remains the default.
 - Tool result message structure is CodeCompanion-version-sensitive.
 - `on_tool_output` runs before CodeCompanion inserts the result. Scheduled reconciliation reduces this gap but is not an exact post-insert event.
 - Exact per-tool post-insert observation would require a public CodeCompanion callback exposing the completed call ID or message.
@@ -145,7 +148,7 @@ The display module owns result lookup handoff, float lifecycle, cursor placement
 - Per-chat lifecycle tracking.
 - Scheduled partial-result reconciliation without output storage.
 - Adapter extraction and `call_id` result lookup.
-- Rendered line tracking and configurable `gT` lookup.
+- Rendered line tracking and configurable `gT` lookup, including opt-in exact/nearest/above/below cursor selection.
 - Configurable next/previous navigation with `gtn` and `gtp`.
 - CodeCompanion-styled result float.
 - Renderer registry with fallback rendering and dedicated `run_command` rendering.

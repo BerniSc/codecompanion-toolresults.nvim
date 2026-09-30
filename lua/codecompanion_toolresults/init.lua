@@ -25,6 +25,13 @@ local display = require("codecompanion_toolresults.display")
 local state_by_bufnr = {}
 local configured = false
 
+local valid_cursor_modes = {
+  exact = true,
+  nearest = true,
+  above = true,
+  below = true,
+}
+
 local defaults = {
   debug = false,
   debug_buffer = false,
@@ -44,6 +51,9 @@ local defaults = {
   },
   float = {
     show_keymaps = true,
+  },
+  cursor = {
+    mode = "exact",
   },
   run_command_language = "bash", -- Display command snippets as bash; change label or set false to keep raw output.
 }
@@ -268,10 +278,18 @@ local function display_tool_reference(chat_state)
   -- TODO Think about maybe sorting/persisting state. Maybe bad for refreshes, but sorting and persisting could improve
   -- O(n) lookup time on average. We are most likely to lookup tools that are close the the end of the chat and order is
   -- unlikely to change anyhow
-  local reference, index = position.find_reference_at_line(chat_state.references, cursor_line)
+  local mode = M._opts.cursor.mode
+  local reference, index = position.find_reference_at_cursor(chat_state.references, cursor_line, mode)
   if not reference then
+    -- Keep feedback mode-specific: exact mode should not imply that moving closer is sufficient.
+    local messages = {
+      exact = "No tool result on current line. Move to a tool label or use next/previous navigation.",
+      nearest = "No tool results available to select.",
+      above = "No tool result above the cursor.",
+      below = "No tool result below the cursor.",
+    }
     -- Always display directly; do not route this through debug logging.
-    vim.notify("No tool result on current line. Move to a tool label or use next/previous navigation.", vim.log.levels.INFO)
+    vim.notify(messages[mode], vim.log.levels.INFO)
     return
   end
 
@@ -405,6 +423,7 @@ end
 function M.setup(opts)
   -- merge with default options
   M._opts = vim.tbl_deep_extend("force", defaults, opts or {})
+  assert(valid_cursor_modes[M._opts.cursor.mode], 'cursor.mode must be one of "exact", "nearest", "above", or "below"')
   configured = true
 
   -- base keymaps

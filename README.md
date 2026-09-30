@@ -6,7 +6,7 @@ Tool calls remain compact in the conversation. When you want more context, open 
 
 Follow what the agent found, check its work, or catch it heading in the wrong direction, while keeping the conversation easy to scan.
 
-Place the cursor on a tool call and press `gT` to inspect its result. Use `gtn` and `gtp` in the chat to jump between tool calls.
+Place the cursor on a tool call and press `gT` to inspect its result. By default, `gT` requires the cursor to be on the tool label; set `cursor.mode` to opt into selecting a nearby result. Use `gtn` and `gtp` in the chat to jump between tool calls.
 
 Inside the result float, use `<Tab>` and `<S-Tab>` to browse results, or press `gT` to return to the tool call.
 
@@ -33,6 +33,9 @@ extensions = {
   toolresults = {
     enabled = true,
     opts = {
+      cursor = {
+        mode = "exact", -- "exact" (default), "nearest", "above", or "below".
+      },
       keymaps = {
         chat = {
           show = "gT",
@@ -65,7 +68,7 @@ Features:
 - CodeCompanion extension loading.
 - Per-chat tool-call observation.
 - Partial lookup in batched calls.
-- Cursor-based lookup with `gT`.
+- Cursor-based lookup with `gT`, supporting exact (default), nearest, above, and below selection modes.
 - Configurable cursor navigation with `gtn` and `gtp`.
 - Inheriting CodeCompanions floating-window dimensions and options.
 - One reusable managed result float per chat.
@@ -80,7 +83,7 @@ Features:
 1. Open a CodeCompanion chat.
 2. Allow one or more tools to run.
 3. Move the cursor to a rendered tool-call line, such as `run_command: date`.
-4. Press `gT` to display its result. Use `gtn` to move to the next tool-call line or `gtp` to move to the previous one.
+4. Press `gT` to display its result. By default, the cursor must be on that line. Optionally configure `cursor.mode` to select the nearest tool label or nearest label strictly above or below the cursor. Use `gtn` to move to the next tool-call line or `gtp` to move to the previous one.
 
 The current result opens in a floating window. The result is looked up from CodeCompanion's current message stack when requested; this extension does not maintain a second output history.
 This means it will match CodeCompanions context management.
@@ -116,6 +119,7 @@ The optional winbar displays configured float-local mappings at the top of the r
 
 | Option | Default | Description |
 | --- | --- | --- |
+| `cursor.mode` | `"exact"` | How `gT` selects a result relative to cursor line: `exact` requires a tool label on that line; `nearest` selects closest label and prefers one above on ties; `above` selects closest label strictly above; `below` selects closest label strictly below. |
 | `keymaps.chat.show` | `"gT"` | Chat-buffer keymap for displaying a result. Set to `false` to disable. |
 | `keymaps.chat.next` | `"gtn"` | Chat-buffer keymap for moving to next tool result. Set to `false` to disable. |
 | `keymaps.chat.previous` | `"gtp"` | Chat-buffer keymap for moving to previous tool result. Set to `false` to disable. |

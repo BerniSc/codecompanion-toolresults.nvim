@@ -253,11 +253,56 @@ T["find_tool_lines"]["matches each newline escape depth correctly"] = function()
   vim.api.nvim_buf_delete(bufnr, { force = true })
 end
 
-T["find_reference_at_line"] = function()
-  local reference = { call_id = "call-1", line = 7 }
+T["find_reference_at_cursor"] = MiniTest.new_set()
 
-  MiniTest.expect.equality(position.find_reference_at_line({ reference }, 7), reference)
-  MiniTest.expect.equality(position.find_reference_at_line({ reference }, 8), nil)
+T["find_reference_at_cursor"]["exact mode only matches cursor line"] = function()
+  local references = {
+    { call_id = "above", line = 6 },
+    { call_id = "exact", line = 7 },
+    { call_id = "below", line = 8 },
+  }
+
+  local reference, index = position.find_reference_at_cursor(references, 7, "exact")
+  MiniTest.expect.equality(reference, references[2])
+  MiniTest.expect.equality(index, 2)
+  MiniTest.expect.equality(position.find_reference_at_cursor(references, 9, "exact"), nil)
+end
+
+T["find_reference_at_cursor"]["nearest mode selects closest reference and prefers above on ties"] = function()
+  local references = {
+    { call_id = "above", line = 6 },
+    { call_id = "below", line = 8 },
+    { call_id = "far", line = 12 },
+  }
+
+  local reference, index = position.find_reference_at_cursor(references, 7, "nearest")
+  MiniTest.expect.equality(reference, references[1])
+  MiniTest.expect.equality(index, 1)
+
+  reference, index = position.find_reference_at_cursor(references, 11, "nearest")
+  MiniTest.expect.equality(reference, references[3])
+  MiniTest.expect.equality(index, 3)
+end
+
+T["find_reference_at_cursor"]["above and below modes select nearest strict direction"] = function()
+  local references = {
+    { call_id = "first", line = 3 },
+    { call_id = "above", line = 6 },
+    { call_id = "cursor", line = 7 },
+    { call_id = "below", line = 9 },
+    { call_id = "last", line = 12 },
+  }
+
+  local reference, index = position.find_reference_at_cursor(references, 7, "above")
+  MiniTest.expect.equality(reference, references[2])
+  MiniTest.expect.equality(index, 2)
+
+  reference, index = position.find_reference_at_cursor(references, 7, "below")
+  MiniTest.expect.equality(reference, references[4])
+  MiniTest.expect.equality(index, 4)
+
+  MiniTest.expect.equality(position.find_reference_at_cursor(references, 2, "above"), nil)
+  MiniTest.expect.equality(position.find_reference_at_cursor(references, 13, "below"), nil)
 end
 
 return T
