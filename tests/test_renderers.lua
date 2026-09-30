@@ -74,6 +74,103 @@ T["tool renderers"]["preserves diagnostics report"] = function()
     { "Diagnostics for `lua/example.lua` (2 found):", "1:1 ERROR lua-language-server undefined global `vim`", "4:5 WARNING lua-language-server unused local `value`", "", "Code:", "1: local value = vim.api.nvim_get_current_buf()", "4: return value" })
 end
 
+T["tool call renderers"] = MiniTest.new_set()
+T["tool call renderers"]["renders structured arguments as fenced sorted JSON"] = function()
+  MiniTest.expect.equality(renderers.render_call({
+    name = "read_file",
+    arguments = { filepath = "README.md", lines = { 1, 4 } },
+  }), {
+    "Tool: read_file",
+    "Arguments:",
+    "````json",
+    "{",
+    '  "filepath": "README.md",',
+    '  "lines": [',
+    "    1,",
+    "    4",
+    "  ]",
+    "}",
+    "````",
+  })
+end
+
+T["tool call renderers"]["uses configured run_command language for command fence"] = function()
+  MiniTest.expect.equality(renderers.render_call({
+    name = "run_command",
+    arguments = { cmd = "printf hi" },
+  }, opts), {
+    "Tool: run_command",
+    "Command:",
+    "````bash",
+    "printf hi",
+    "````",
+  })
+end
+
+T["tool call renderers"]["uses text fence when run_command language is disabled"] = function()
+  MiniTest.expect.equality(renderers.render_call({
+    name = "run_command",
+    arguments = { cmd = "printf hi" },
+  }, { run_command_language = false }), {
+    "Tool: run_command",
+    "Command:",
+    "````text",
+    "printf hi",
+    "````",
+  })
+end
+
+T["tool call renderers"]["includes additional run_command arguments when present"] = function()
+  MiniTest.expect.equality(renderers.render_call({
+    name = "run_command",
+    arguments = { cmd = "printf hi", flag = "allow" },
+  }, opts), {
+    "Tool: run_command",
+    "Command:",
+    "````bash",
+    "printf hi",
+    "````",
+    "Other arguments:",
+    "````json",
+    "{",
+    '  "flag": "allow"',
+    "}",
+    "````",
+  })
+end
+
+T["tool call renderers"]["grows fence around embedded backticks"] = function()
+  MiniTest.expect.equality(renderers.render_call({
+    name = "custom_tool",
+    arguments = { input = "contains ```` inside" },
+  }), {
+    "Tool: custom_tool",
+    "Arguments:",
+    "`````json",
+    "{",
+    '  "input": "contains ```` inside"',
+    "}",
+    "`````",
+  })
+end
+
+T["tool call renderers"]["renders string and unavailable arguments as text"] = function()
+  MiniTest.expect.equality(renderers.render_call({ name = "custom_tool", arguments = "raw input" }), {
+    "Tool: custom_tool",
+    "Arguments:",
+    "````text",
+    "raw input",
+    "````",
+  })
+  MiniTest.expect.equality(renderers.render_call({ name = "custom_tool" }), {
+    "Tool: custom_tool",
+    "Arguments:",
+    "````text",
+    "Unavailable",
+    "````",
+  })
+end
+
 T["run_command"] = MiniTest.new_set()
 T["run_command"]["renders command and removes duplicated prefix"] = function()
   MiniTest.expect.equality(
