@@ -45,6 +45,7 @@ extensions = {
         float = {
           next = "<Tab>",
           previous = "<S-Tab>",
+          toggle_view = "K",
           close = "q",
           escape = "<Esc>",
           return_to_chat = "gT",
@@ -72,7 +73,7 @@ Features:
 - Configurable cursor navigation with `gtn` and `gtp`.
 - Inheriting CodeCompanions floating-window dimensions and options.
 - One reusable managed result float per chat.
-- Float-local result navigation and close mappings.
+- Float-local result navigation, call/result view toggle, and close mappings.
 - Result position in the float title.
 - Safe float recreation after manual close.
 - Renderer registry with fallback rendering.
@@ -102,6 +103,7 @@ The extension reuses one managed result float per chat. Displaying another resul
 
 While focused inside the float:
 
+- `K` toggles between the current tool call and its result. Structured arguments display as fenced JSON; `run_command` input displays in a `text` fence. The selected view persists while browsing with `<Tab>` and `<S-Tab>`.
 - `<Tab>` shows the next result.
 - `<S-Tab>` shows the previous result.
 - `q` closes the float.
@@ -110,7 +112,7 @@ While focused inside the float:
 
 Navigation wraps from last result to first and from first result to last. It uses ordered tool references, independently of chat-buffer cursor position. If the float is manually closed, the next display or navigation action recreates it safely. Closing the parent chat also closes its managed result float.
 
-Mappings are configurable under `keymaps.float`: `next`, `previous`, `close`, `escape`, and `return_to_chat`. Set an option to `false` to disable its mapping.
+Mappings are configurable under `keymaps.float`: `toggle_view`, `next`, `previous`, `close`, `escape`, and `return_to_chat`. Set an option to `false` to disable its mapping. `K` is buffer-local to the managed float and overrides Neovim's keyword lookup there; set `toggle_view = false` or choose another key to avoid that conflict.
 
 The optional winbar displays configured float-local mappings at the top of the result window. Keymap options set to `false` are not shown. Set `float.show_keymaps = false` to hide the winbar while keeping keymap behavior unchanged.
 
@@ -123,13 +125,14 @@ The optional winbar displays configured float-local mappings at the top of the r
 | `keymaps.chat.show` | `"gT"` | Chat-buffer keymap for displaying a result. Set to `false` to disable. |
 | `keymaps.chat.next` | `"gtn"` | Chat-buffer keymap for moving to next tool result. Set to `false` to disable. |
 | `keymaps.chat.previous` | `"gtp"` | Chat-buffer keymap for moving to previous tool result. Set to `false` to disable. |
+| `keymaps.float.toggle_view` | `"K"` | Float-local toggle between tool-call arguments and result. The selected view persists during result navigation. Set to `false` to disable. |
 | `keymaps.float.next` | `"<Tab>"` | Float-local next-result mapping. Set to `false` to disable. |
 | `keymaps.float.previous` | `"<S-Tab>"` | Float-local previous-result mapping. Set to `false` to disable. |
 | `keymaps.float.close` | `"q"` | Float-local close mapping. Set to `false` to disable. |
 | `keymaps.float.escape` | `"<Esc>"` | Float-local Escape mapping. Set to `false` to disable. |
 | `keymaps.float.return_to_chat` | `"gT"` | Float-local mapping that closes result float and returns to its originating tool-call line. Set to `false` to disable. |
 | `float.show_keymaps` | `true` | Show float-local mappings in result window winbar. |
-| `run_command_language` | `"bash"` | Language label for displayed `run_command` commands. Set to another shell or `false`; default is only a display label, not a shell assumption. |
+| `run_command_language` | `"bash"` | Language label for `run_command` result snippets. Set to another label or `false` to show result without a fence. Call-view input always uses a neutral `text` fence. |
 | `debug` | `false` | Enable lifecycle and reference logging. |
 | `debug_buffer` | `false` | Log rendered chat-buffer lines and calculated positions. |
 
@@ -153,7 +156,7 @@ The extension uses CodeCompanion's chat callbacks and message structure. It also
 
 CodeCompanion changes may require adapter updates.
 
-`run_command` formatting uses the renderer registry's display-only code-fence renderer and does not assume a shell for execution. Results from tools without a dedicated renderer use fallback string or `vim.inspect` formatting.
+`run_command` result formatting uses display-only code fences and does not assume a shell for execution. Tool-call arguments use fenced JSON for structured input and a neutral `text` fence for command input. Results from tools without a dedicated renderer use fallback string or `vim.inspect` formatting.
 
 ## Testing
 

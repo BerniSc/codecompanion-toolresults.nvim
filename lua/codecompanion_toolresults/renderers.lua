@@ -40,6 +40,77 @@ local function split_lines(content)
   return vim.split(content, "\n", { plain = true })
 end
 
+---Format arbitrary tool-call arguments for the managed float.
+---Structured arguments display as JSON; scalar or malformed arguments display as text.
+---@param arguments any Tool-call arguments.
+---@return string[]
+local function render_call_arguments(arguments)
+  local content
+  local language
+
+  if type(arguments) == "table" then
+    local ok, encoded = pcall(vim.json.encode, arguments, { indent = "  ", sort_keys = true })
+    if ok then
+      content = encoded
+      language = "json"
+    else
+      content = vim.inspect(arguments)
+      language = "text"
+    end
+  elseif type(arguments) == "string" then
+    content = arguments
+    language = "text"
+  else
+    content = vim.inspect(arguments)
+    language = "text"
+  end
+
+  return split_lines(format_codeblock(content, language))
+end
+
+---Render a tool call as display lines without assuming how tool executes.
+---@param call table Current tool call.
+---@return string[]
+function M.render_call(call, opts)
+  local name = call.name or "unknown"
+  local arguments = call.arguments
+  local content
+  local language
+  local heading
+
+  if arguments == nil then
+    content = "Unavailable"
+    language = "text"
+    heading = "Arguments"
+  elseif name == "run_command" and type(arguments) == "table" and type(arguments.cmd) == "string" then
+    content = arguments.cmd
+    language = opts and opts.run_command_language or "text"
+    heading = "Command"
+  else
+    local rendered = render_call_arguments(arguments)
+    local lines = { "Tool: " .. tostring(name), "Arguments:" }
+    vim.list_extend(lines, rendered)
+    return lines
+  end
+
+  local lines = { "Tool: " .. tostring(name), heading .. ":" }
+  vim.list_extend(lines, split_lines(format_codeblock(content, language)))
+
+  -- TODO Refactor behind interface? Kind of clunky to have this "if cascade" here!
+  if name == "run_command" and type(arguments) == "table" then
+    local other_arguments = vim.deepcopy(arguments)
+    other_arguments.cmd = nil
+
+    -- Keep the common command-only view compact, but do not hide any additional input fields.
+    if next(other_arguments) then
+      vim.list_extend(lines, { "Other arguments:" })
+      vim.list_extend(lines, render_call_arguments(other_arguments))
+    end
+  end
+
+  return lines
+end
+
 ---@param content string
 ---@param tag string
 ---@return string

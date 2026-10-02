@@ -144,6 +144,58 @@ T["tool_references"]["ignores malformed run_command arguments"] = function()
 end
 
 
+T["find_tool_call"] = MiniTest.new_set()
+T["find_tool_call"]["finds and decodes call arguments by call_id"] = function()
+  local call = messages.find_tool_call({
+    {
+      role = "llm",
+      tools = {
+        calls = {
+          {
+            id = "provider-id",
+            call_id = "call-responses",
+            ["function"] = {
+              name = "read_file",
+              arguments = '{"filepath":"README.md","lines":[1,4]}',
+            },
+          },
+        },
+      },
+    },
+  }, "call-responses")
+
+  MiniTest.expect.equality(call, {
+    call_id = "call-responses",
+    name = "read_file",
+    arguments = { filepath = "README.md", lines = { 1, 4 } },
+  })
+end
+
+T["find_tool_call"]["returns malformed arguments without inventing decoded data"] = function()
+  local call = messages.find_tool_call({
+    {
+      tools = {
+        calls = {
+          {
+            id = "call-1",
+            ["function"] = { name = "custom", arguments = "{invalid" },
+          },
+        },
+      },
+    },
+  }, "call-1")
+
+  MiniTest.expect.equality(call, {
+    call_id = "call-1",
+    name = "custom",
+    arguments = "{invalid",
+  })
+end
+
+T["find_tool_call"]["returns nil when call is unavailable"] = function()
+  MiniTest.expect.equality(messages.find_tool_call({}, "missing-call"), nil)
+end
+
 T["find_tool_result"] = MiniTest.new_set()
 T["find_tool_result"]["returns current failed result"] = function()
   MiniTest.expect.equality(messages.find_tool_result(tool_failure.messages, "call-create"),

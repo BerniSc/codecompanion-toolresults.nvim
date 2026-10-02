@@ -2,10 +2,12 @@
 
 ## Goal
 
-CodeCompanion hides tool output from the normal chat view. It used to display the results in folds, but this could clutter the UI and dampen the UX.
+CodeCompanion hides tool output from the normal chat view.
+It used to display the results in folds, but this could clutter the UI and dampen the UX.
 This extension provides an explicit way to inspect a current tool result without restoring all tool output to the chat buffer.
 
-The extension is separate from CodeCompanion. CodeCompanion remains responsible for message history, context editing, compaction, and rendering.
+The extension is separate from CodeCompanion.
+CodeCompanion remains responsible for message history, context editing, compaction, and rendering.
 This plugin stores references and presentation metadata only.
 
 ## Current interaction
@@ -18,8 +20,8 @@ This plugin stores references and presentation metadata only.
 6. Tool messages are identified by `tools.call_id`.
 7. The rendered chat buffer is scanned for current tool-label lines.
 8. The user presses `gT`; configured `cursor.mode` selects a reference from the current cursor line and refreshed rendered positions (`exact` by default, or opt-in `nearest`, `above`, or `below`).
-9. The extension resolves the current result by `call_id`.
-10. The result opens in a CodeCompanion-styled floating window.
+9. The extension resolves the current result by `call_id` and opens it in a CodeCompanion-styled floating window.
+10. `K` optionally switches that float to the matching current tool-call arguments, also looked up by `call_id`.
 
 ## Data ownership
 
@@ -35,7 +37,7 @@ The extension keeps per-chat state containing:
 
 A tool reference contains metadata such as `call_id`, tool name, message ID, rendered line, and status.
 
-Tool output is not copied into extension state. The adapter returns content transiently when `gT` requests it.
+Tool output and call arguments are not copied into extension state. Adapters return them transiently when displaying the corresponding view.
 
 ## Module boundaries
 
@@ -47,7 +49,7 @@ lua/codecompanion_toolresults/init.lua
   Lifecycle wiring, state, keymap, orchestration
 
 lua/codecompanion_toolresults/display.lua
-  Result lookup handoff, managed float lifecycle, cursor placement, and float-local mappings
+  Result/call lookup handoff, managed float lifecycle, cursor placement, view toggle, and float-local mappings
 
 lua/codecompanion_toolresults/navigation.lua
   Ordered next/previous result index navigation
@@ -89,15 +91,25 @@ run_command: date
 run_command: ls
 ```
 
-The position module reads the current buffer lines and matches references in message order. This supports repeated tool names as long as rendered order matches message order. Line numbers are recalculated instead of cached as identity. A full buffer scan is intentional: chat buffers are normally small, and it avoids stale positions after edits, new messages, or context management.
+The position module reads the current buffer lines and matches references in message order.
+This supports repeated tool names as long as rendered order matches message order.
+Line numbers are recalculated instead of cached as identity.
+A full buffer scan is intentional: chat buffers are normally small, and it avoids stale positions after edits, new messages, or context management.
 
-After refreshing positions, `cursor.mode` resolves `gT` selection without changing label detection or tool identity. `exact` requires a label on the cursor line and is the default. `nearest` selects the closest visible label, preferring the one above on equal distance. `above` and `below` select the closest label strictly in that direction. Directional modes do not wrap; when no candidate exists, the extension reports a mode-specific message. Selection remains transient presentation behavior: results are still resolved from current CodeCompanion messages using `call_id`.
+After refreshing positions, `cursor.mode` resolves `gT` selection without changing label detection or tool identity.
+`exact` requires a label on the cursor line and is the default.
+`nearest` selects the closest visible label, preferring the one above on equal distance.
+`above` and `below` select the closest label strictly in that direction.
+Directional modes do not wrap; when no candidate exists, the extension reports a mode-specific message.
+Selection remains transient presentation behavior: results are still resolved from current CodeCompanion messages using `call_id`.
 
 ## UI integration
 
 `adapters/ui.lua` reads `config.display.chat.floating_window` and merges tool-result-specific values before calling CodeCompanion's `utils.ui.create_float`.
 
-This reuses configured width, height, relative position, and window options. The helper is an internal CodeCompanion API, not a documented public extension API. Coupling is isolated to one adapter module so future changes remain localized.
+This reuses configured width, height, relative position, and window options.
+The helper is an internal CodeCompanion API, not a documented public extension API.
+Coupling is isolated to one adapter module so future changes remain localized.
 
 ## Context management
 
@@ -114,19 +126,32 @@ The extension does not create persistent tool-output history.
 
 The extension maintains one managed result float per chat. `gT` creates it when needed; later displays update the existing float. If the user closes the float manually, the next display or float-local navigation detects the invalid window and recreates it.
 
-The float title includes the ordered result position, such as `Tool Result: read_file [2/5]`. Float-local mappings are configurable under `keymaps.float`:
+The float title includes current view and ordered position, such as `Tool Result: read_file [2/5]` or `Tool Call: read_file [2/5]`.
+`K` toggles between the current result and its matching call arguments; `<Tab>` and `<S-Tab>` preserve the selected view as the user browses calls/results.
+Arguments are looked up by `call_id` from current messages only when requested and are not retained in extension state.
+Structured arguments render as fenced, sorted JSON; `run_command` input renders in a neutral `text` fence to mark multiline command boundaries without implying an execution shell.
+Any additional `run_command` arguments appear under `Other arguments` as fenced JSON; that section stays omitted when command is only input.
+The renderer grows fence length if argument content contains backticks.
+Float-local mappings are configurable under `keymaps.float`:
 
-- `<Tab>`: next result
-- `<S-Tab>`: previous result
+- `K`: toggle between call and result
+- `<Tab>`: next result (or next call while call view selected)
+- `<S-Tab>`: previous result (or previous call while call view selected)
 - `q`: close
 - `<Esc>`: close
 - `gT`: close the float and return to its originating tool-call line in the chat
 
 The chat mappings live under `keymaps.chat`. Set any mapping to `false` to disable it. `float.show_keymaps` controls whether float mappings appear in the winbar.
 
-Next and previous navigation wraps around the ordered references. It does not depend on chat-buffer line positions. `gT` uses the float's stored `call_id`, reconciles current positions, closes the float, and returns to the corresponding visible chat line. `<Esc>` remains a separate close-only mapping. Closing the parent CodeCompanion chat closes its managed result float.
+Next and previous navigation wraps around the ordered references.
+It does not depend on chat-buffer line positions.
+`gT` uses the float's stored `call_id`, reconciles current positions, closes the float, and returns to the corresponding visible chat line.
+`<Esc>` remains a separate close-only mapping.
+Closing the parent CodeCompanion chat closes its managed result float.
 
-The display module owns result lookup handoff, float lifecycle, cursor placement, and float-local mappings. The renderer module owns result-to-lines conversion only. Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanion callbacks.
+The display module owns transient call/result lookup handoff, float lifecycle, cursor placement, view selection, and float-local mappings.
+The renderer module owns result and call-to-lines conversion only.
+Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanion callbacks.
 
 
 ## Current limitations
@@ -152,6 +177,7 @@ The display module owns result lookup handoff, float lifecycle, cursor placement
 - Configurable next/previous navigation with `gtn` and `gtp`.
 - CodeCompanion-styled result float.
 - Renderer registry with fallback rendering and dedicated `run_command` rendering.
+- On-demand tool-call argument view with `K`, resolved by `call_id` and retained across navigation.
 - Runtime diagnostic dumps are available through `codecompanion.extensions.toolresults.dump()` and include current messages, references, tool indexes, and rendered chat-buffer content per tracked chat.
 
 
@@ -160,7 +186,6 @@ The display module owns result lookup handoff, float lifecycle, cursor placement
 1. Add renderers for `read_file`, `grep_search`, `search_grep`, and `insert_edit_into_file`.
 2. Preserve current output while adding each renderer.
 3. Investigate CodeCompanion's diff UI for edit tools.
-4. Add optional tool-call parameter display.
 
 ### Later work
 
