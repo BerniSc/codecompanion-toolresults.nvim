@@ -7,20 +7,6 @@ local ui = require("codecompanion_toolresults.adapters.ui")
 local position = require("codecompanion_toolresults.position")
 local display = require("codecompanion_toolresults.display")
 
----@class CodeCompanionToolresults.FloatState
----@field bufnr integer
----@field winnr integer
----@field index integer
----@field call_id string Tool call identifier for returning to the chat location.
-
----@class CodeCompanionToolresults.ChatState
----@field bufnr integer
----@field chat table
----@field references table[]
----@field messages table[]
----@field tools table<string, table>
----@field float CodeCompanionToolresults.FloatState?
-
 ---@type table<integer, CodeCompanionToolresults.ChatState>
 local state_by_bufnr = {}
 local configured = false
@@ -111,7 +97,7 @@ end
 ---Refresh rendered line positions for all current tool references.
 ---Should ensure that even if a user manually alters the chat by - for example - adding
 ---a new line before an existing toolout put can correctly be referenced.
----@param chat_state table Per-chat extension state.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@return nil
 local function refresh_positions(chat_state)
   local lines_by_call_id, diagnostics = position.find_tool_lines(chat_state.bufnr, chat_state.references)
@@ -135,7 +121,7 @@ end
 ---
 ---This reads the current message stack, but does not copy tool output into extension state.
 ---It can run after partial tool completion or a checkpoint.
----@param chat_state table Per-chat extension state.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@return nil
 local function reconcile_messages(chat_state)
   local references = adapter.tool_references(chat_state.messages)
@@ -199,7 +185,7 @@ end
 
 ---Log the rendered chat buffer after CodeCompanion updates it. Conditionbound on Buffer-
 ---Debbuging as well as regular debugging.
----@param chat_state table Per-chat extension state.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@return nil
 local function dump_buffer(chat_state)
   if not M._opts.debug_buffer then
@@ -233,7 +219,7 @@ end
 --- --------------------
 
 ---Move the cursor to the next or previous rendered tool reference.
----@param chat_state table Per-chat extension state.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param direction integer 1 for next, -1 for previous.
 ---@return nil
 local function navigate_tool_reference(chat_state, direction)
@@ -265,7 +251,7 @@ local function navigate_tool_reference(chat_state, direction)
 end
 
 ---Display the current tool result under the cursor.
----@param chat_state table Per-chat extension state.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@return nil
 local function display_tool_reference(chat_state)
   -- it is possible that the chat has changed since last "scan". For example a newline could have been added

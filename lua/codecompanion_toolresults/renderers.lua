@@ -139,19 +139,19 @@ local function fenced_text(content)
   return format_codeblock(content, "text")
 end
 
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param content string Normalized result content.
 ---@param opts table Extension options.
----@param context table Renderer dependencies.
+---@param context CodeCompanionToolresults.RendererContext Renderer dependencies.
 ---@return string[]
 local function render_fallback(reference, content, opts, context)
   return vim.split(content, "\n", { plain = true })
 end
 
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param content string Normalized result content.
 ---@param opts table Extension options.
----@param context table Renderer dependencies.
+---@param context CodeCompanionToolresults.RendererContext Renderer dependencies.
 ---@return string[]
 local function render_run_command(reference, content, opts, context)
   local language = opts.run_command_language
@@ -165,10 +165,10 @@ local function render_run_command(reference, content, opts, context)
   return vim.split(rendered, "\n", { plain = true })
 end
 
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param content string Normalized result content.
 ---@param opts table Extension options.
----@param context table Renderer dependencies.
+---@param context CodeCompanionToolresults.RendererContext Renderer dependencies.
 ---@return string[]
 local function render_file_search(reference, content, opts, context)
   content = remove_tag(content, "fileSearchTool")
@@ -180,10 +180,10 @@ local function render_file_search(reference, content, opts, context)
   return split_lines(summary .. "\n" .. fenced_text(block.body))
 end
 
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param content string Normalized result content.
 ---@param opts table Extension options.
----@param context table Renderer dependencies.
+---@param context CodeCompanionToolresults.RendererContext Renderer dependencies.
 ---@return string[]
 local function render_grep_search(reference, content, opts, context)
   content = remove_tag(content, "grepSearchTool")
@@ -196,10 +196,10 @@ local function render_grep_search(reference, content, opts, context)
   return split_lines(summary .. "\n" .. fenced_text(block.body))
 end
 
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param content string Normalized result content.
 ---@param opts table Extension options.
----@param context table Renderer dependencies.
+---@param context CodeCompanionToolresults.RendererContext Renderer dependencies.
 ---@return string[]
 local function render_read_file(reference, content, opts, context)
   local block = fenced_block(content)
@@ -211,10 +211,10 @@ local function render_read_file(reference, content, opts, context)
   return split_lines(rendered)
 end
 
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param content string Normalized result content.
 ---@param opts table Extension options.
----@param context table Renderer dependencies.
+---@param context CodeCompanionToolresults.RendererContext Renderer dependencies.
 ---@return string[]
 local function render_get_diagnostics(reference, content, opts, context)
   return split_lines(content)
@@ -230,10 +230,10 @@ local registry = {
 }
 
 ---Render one tool result using a tool-specific renderer or fallback behavior.
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param result table Current tool result.
 ---@param opts table Extension options.
----@param context table Renderer dependencies.
+---@param context CodeCompanionToolresults.RendererContext Renderer dependencies.
 ---@return string[] lines Rendered result split into buffer lines.
 function M.render(reference, result, opts, context)
   local renderer = registry[reference.name] or render_fallback

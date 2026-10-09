@@ -65,7 +65,7 @@ end
 
 ---Extract CodeCompanion metadata used to identify a message.
 ---@param message table CodeCompanion message.
----@return table identity containing message ID and index.
+---@return { message_id: number?, message_index: integer? } identity containing message ID and index.
 local function get_message_identity(message)
   local metadata = message._meta or {}
 
@@ -80,7 +80,7 @@ end
 ---Tool-result messages can appear separately from the assistant message that contains their calls. Build
 ---the index first so references do not depend on message order. Rebuilding it during reconciliation also
 ---follows CodeCompanion when context management replaces or removes messages.
----@param messages table[] Current CodeCompanion message stack.
+---@param messages CodeCompanion.Chat.Messages Current CodeCompanion message stack.
 ---@return table<string, string> Commands keyed by call ID.
 local function index_tool_commands(messages)
   local cmds_by_id = {}
@@ -108,8 +108,8 @@ local function index_tool_commands(messages)
 end
 
 ---Extract tool message references from a CodeCompanion message stack.
----@param messages table[] Current CodeCompanion message stack.
----@return table[] Tool references without tool output content.
+---@param messages CodeCompanion.Chat.Messages Current CodeCompanion message stack.
+---@return CodeCompanionToolresults.ToolReference[] Tool references without tool output content.
 function M.tool_references(messages)
   local references = {}
   local commands_by_id = index_tool_commands(messages)
@@ -139,9 +139,9 @@ end
 
 -- TODO Consolidate call scanning and argument decoding with index_tool_commands.
 ---Find the current tool call for a call ID.
----@param messages table[] Current CodeCompanion message stack.
+---@param messages CodeCompanion.Chat.Messages Current CodeCompanion message stack.
 ---@param call_id string Tool-call identifier.
----@return table? Current tool-call data, including transient arguments.
+---@return CodeCompanionToolresults.ToolCall? Current tool-call data, including transient arguments.
 function M.find_tool_call(messages, call_id)
   if not call_id then
     return nil
@@ -229,9 +229,9 @@ function M.normalize_result(content)
 end
 
 ---Find the current tool result for a call ID.
----@param messages table[] Current CodeCompanion message stack.
+---@param messages CodeCompanion.Chat.Messages Current CodeCompanion message stack.
 ---@param call_id string Tool-call identifier.
----@return table? Current result data, including transient content.
+---@return CodeCompanionToolresults.ToolResult? Current result data, including transient content.
 function M.find_tool_result(messages, call_id)
   if not call_id then
     return nil
@@ -241,7 +241,8 @@ function M.find_tool_result(messages, call_id)
     if message.role == "tool" and message.tools and message.tools.call_id == call_id then
       local identity = get_message_identity(message)
 
-      return {
+      ---@type CodeCompanionToolresults.ToolResult
+      local result = {
         call_id = message.tools.call_id,
         name = message.tools.name,
         message_id = identity.message_id,
@@ -249,6 +250,7 @@ function M.find_tool_result(messages, call_id)
         content = message.content,
         status = "available",
       }
+      return result
     end
   end
 end

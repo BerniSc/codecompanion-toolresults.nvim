@@ -29,7 +29,7 @@ local function build_winbar(opts, view)
   return "%=" .. text:gsub("%%", "%%%%") .. "%="
 end
 
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param lines string[] Rendered result lines.
 ---@param opts table Extension options.
 ---@return boolean
@@ -40,7 +40,7 @@ local function should_position_cursor(reference, lines, opts)
 end
 
 ---@param winnr integer Float window number.
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param lines string[] Rendered result lines.
 ---@param opts table Extension options.
 local function position_cursor(winnr, reference, lines, opts, view)
@@ -52,7 +52,7 @@ local function position_cursor(winnr, reference, lines, opts, view)
   vim.api.nvim_win_set_cursor(winnr, { math.min(2, #lines), 0 })
 end
 
----@param result table Current tool result.
+---@param result { name: string? } Current title data.
 ---@param index integer Reference index.
 ---@param reference_count integer Number of ordered references.
 ---@param view string Current float view.
@@ -62,7 +62,7 @@ local function build_title(result, index, reference_count, view)
   return string.format("%s: %s [%d/%d]", label, result.name or "unknown", index, reference_count)
 end
 
----@param chat_state table Per-chat extension state.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param reference table Tool reference.
 ---@param view string Current view.
 ---@param lines string[] Rendered result lines.
@@ -92,9 +92,9 @@ local function update_float(chat_state, reference, view, lines, title, opts, ui)
 end
 
 ---Return from the managed result float to its originating chat tool line.
----@param chat_state table Per-chat extension state.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param call_id string Tool call identifier.
----@param reconcile fun(chat_state: table) Reconcile current chat messages.
+---@param reconcile fun(chat_state: CodeCompanionToolresults.ChatState) Reconcile current chat messages.
 ---@param close fun() Close this managed float.
 local function return_to_chat(chat_state, call_id, reconcile, close)
   reconcile(chat_state)
@@ -124,7 +124,7 @@ local function return_to_chat(chat_state, call_id, reconcile, close)
   vim.api.nvim_win_set_cursor(chat_window, { reference.line, 0 })
 end
 
----@param chat_state table Per-chat extension state.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param reference table Tool reference.
 ---@param view string Current view.
 ---@param lines string[] Rendered result lines.
@@ -212,7 +212,7 @@ end
 ---
 ---The explicit dependencies keep CodeCompanion integration at the call boundary
 ---and make this module straightforward to test without global plugin state.
----@param chat_state table Per-chat extension state.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param reference table Tool reference.
 ---@param index integer Reference index.
 ---@param opts table Extension options.
