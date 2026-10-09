@@ -250,9 +250,101 @@ function M.find_tool_result(messages, call_id)
         content = message.content,
         status = "available",
       }
+      if message._meta and message._meta.estimated_tokens ~= nil then
+        result.estimated_tokens = message._meta.estimated_tokens
+      end
+      -- Attribute saved by us. Not yet persistent over restored sessions.
+      if message._meta and message._meta.codecompanion_toolresults_cleared == true then
+        result.cleared = true
+      end
       return result
     end
   end
+end
+
+---Prepare a tool-result clear operation against CodeCompanion's live chat for the unique original
+---CodeCompanion message identified by tool call ID for clearing.
+---The operation retains the original message for in-place mutation; it does not copy result content.
+---Its commit method rechecks chat activity and message identity after asynchronous prompts.
+---On success, commit returns the chat's current messages table.
+---@param chat table CodeCompanion chat instance.
+---@param call_id string Tool-call identifier.
+---@return CodeCompanionToolresults.ToolResultClearOperation? operation
+---@return string? error
+function M.prepare_tool_result_clear(chat, call_id)
+  -- Keep live CodeCompanion reference; async prompts require rechecking current messages before mutation.
+  if not chat then
+    return nil, "Chat is no longer available; nothing was changed."
+  end
+  if chat.current_request or chat.tool_orchestrator then
+    return nil, "Wait for the current request and tool batch to finish before clearing a result."
+  end
+
+  local function find_unique_tool_result_message()
+    local found
+    for _, message in ipairs(chat.messages or {}) do
+      if message.role == "tool" and message.tools and message.tools.call_id == call_id then
+        if found then
+          return nil, "More than one tool result has this call ID; nothing was changed."
+        end
+        found = message
+      end
+    end
+
+    if not found then
+      return nil, "Tool result is no longer available; nothing was changed."
+    end
+    if type(found.content) ~= "string" then
+      return nil, "Tool result content is not editable; nothing was changed."
+    end
+    if found._meta and found._meta.codecompanion_toolresults_cleared == true then
+      return nil, "Tool result was already cleared."
+    end
+
+    return found
+  end
+
+  local selected, err = find_unique_tool_result_message()
+  if not selected then
+    return nil, err
+  end
+
+  local function commit(content)
+    -- Prompts are asynchronous. Refuse stale selection or a chat that became active meanwhile.
+    if chat.current_request or chat.tool_orchestrator then
+      return false, nil, "Chat activity started during confirmation; nothing was changed."
+    end
+
+    local current, find_error = find_unique_tool_result_message()
+    if not current or current ~= selected then
+      return false, nil, find_error or "Tool result changed during confirmation; nothing was changed."
+    end
+
+    -- Checkpoints report a chat-wide estimate; they do not refresh each message's estimate after this mutation.
+    -- Recalculate for the replacement content so the old tool-output estimate is not left stale.
+    local estimated_tokens
+    local ok, tokens = pcall(require, "codecompanion.utils.tokens")
+    if ok and type(tokens) == "table" and type(tokens.calculate) == "function" then
+      local calculated, value = pcall(tokens.calculate, content)
+      if calculated and type(value) == "number" then
+        estimated_tokens = value
+      end
+    end
+
+    current.content = content
+    current._meta = current._meta or {}
+    current._meta.estimated_tokens = estimated_tokens
+    -- Keep plugin state in CodeCompanion's metadata, not inferred from result text. The current
+    -- session serialiser preserves only `_meta.tag`, so this flag is lost when a session is restored.
+    -- TODO: Ask Oli Morris for a supported way to persist namespaced plugin metadata.
+    current._meta.codecompanion_toolresults_cleared = true
+    return true, chat.messages
+  end
+
+  return {
+    name = selected.tools.name or "tool",
+    commit = commit,
+  }
 end
 
 return M

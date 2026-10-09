@@ -1,7 +1,5 @@
 local M = {}
 
----@alias CodeCompanionToolresults.Renderer fun(reference: table, content: string, opts: table, context: table): string[]
-
 ---Format content as a fenced Markdown code block.
 ---
 ---Use at least four backticks and grow fence length when content contains
@@ -231,11 +229,16 @@ local registry = {
 
 ---Render one tool result using a tool-specific renderer or fallback behavior.
 ---@param reference CodeCompanionToolresults.ToolReference Tool reference.
----@param result table Current tool result.
+---@param result CodeCompanionToolresults.ToolResult Current tool result.
 ---@param opts table Extension options.
 ---@param context CodeCompanionToolresults.RendererContext Renderer dependencies.
 ---@return string[] lines Rendered result split into buffer lines.
 function M.render(reference, result, opts, context)
+  -- Cleared content is a plugin-authored marker, not tool output; preserve it verbatim instead of applying the tool renderer.
+  if result.cleared then
+    return split_lines(result.content)
+  end
+
   local renderer = registry[reference.name] or render_fallback
   local content = content_as_string(result.content)
   local normalized_content, metadata = context.normalize_result(content)

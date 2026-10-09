@@ -6,6 +6,7 @@ local ui = require("codecompanion_toolresults.adapters.ui")
 
 local position = require("codecompanion_toolresults.position")
 local display = require("codecompanion_toolresults.display")
+local redaction = require("codecompanion_toolresults.redaction")
 
 ---@type table<integer, CodeCompanionToolresults.ChatState>
 local state_by_bufnr = {}
@@ -31,6 +32,7 @@ local defaults = {
       next = "<Tab>",
       previous = "<S-Tab>",
       toggle_view = "K",
+      clear_result = "r",
       close = "q",
       escape = "<Esc>",
       return_to_chat = "gT",
@@ -250,6 +252,41 @@ local function navigate_tool_reference(chat_state, direction)
   vim.api.nvim_win_set_cursor(0, { scroll_target.line, 0 })
 end
 
+---Create renderer dependencies for result display and clear actions.
+---@return table
+local function make_renderer_context()
+  return {
+    remove_run_command_prefix = adapter.remove_run_command_prefix,
+    normalize_result = adapter.normalize_result,
+    clear_result = function(current_state, call_id, on_done)
+      reconcile_messages(current_state)
+      redaction.start(current_state, call_id, adapter, nil, on_done)
+    end,
+  }
+end
+
+---Refresh an open result float from CodeCompanion's current messages.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
+local function refresh_managed_float(chat_state)
+  local float = chat_state.float
+  if not float then
+    return
+  end
+
+  local index
+  for i, reference in ipairs(chat_state.references) do
+    if reference.call_id == float.call_id then
+      index = i
+      break
+    end
+  end
+  if not index then
+    return
+  end
+
+  display.show(chat_state, chat_state.references[index], index, M._opts, adapter, ui, reconcile_messages, make_renderer_context(), float.view)
+end
+
 ---Display the current tool result under the cursor.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@return nil
@@ -282,10 +319,7 @@ local function display_tool_reference(chat_state)
 
   assert(index, "toolreference lookup returned no index")
   -- Resolve and render the current result through the display module.
-  display.show(chat_state, reference, index, M._opts, adapter, ui, reconcile_messages, {
-    remove_run_command_prefix = adapter.remove_run_command_prefix,
-    normalize_result = adapter.normalize_result,
-  })
+  display.show(chat_state, reference, index, M._opts, adapter, ui, reconcile_messages, make_renderer_context())
 end
 
 --- --------------------
@@ -338,6 +372,7 @@ local function attach_to_chat(chat, bufnr)
       end
 
       reconcile_messages(chat_state)
+      refresh_managed_float(chat_state)
       dump_buffer(chat_state)
     end)
   end)
@@ -347,9 +382,17 @@ local function attach_to_chat(chat, bufnr)
   -- finished (thats the important one for us) and before and after msgs with/without tools are sent.
   -- This ensures we always have a clean representation of the current buffer at one of those checkpoints.
   chat:add_callback("on_checkpoint", function(_, data)
-    chat_state.messages = data.messages
-    reconcile_messages(chat_state)
-    dump_buffer(chat_state)
+    vim.schedule(function()
+      if state_by_bufnr[bufnr] ~= chat_state then
+        return
+      end
+      -- CodeCompanion runs context management after checkpoint callbacks return.
+      -- Read messages then, so an open float sees any in-place edits and updated estimates.
+      chat_state.messages = chat.messages
+      reconcile_messages(chat_state)
+      refresh_managed_float(chat_state)
+      dump_buffer(chat_state)
+    end)
 
     notify(string.format("checkpoint: bufnr=%d messages=%d estimated_tokens=%s tools=%d [%s]", bufnr, #(data.messages or {}), data.estimated_tokens or "?",
       #chat_state.references, serialize_references(chat_state.references)))

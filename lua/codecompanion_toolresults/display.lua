@@ -18,6 +18,9 @@ local function build_winbar(opts, view)
   end
 
   add(opts.keymaps.float.toggle_view, view == "call" and "Result" or "Tool call")
+  if view == "result" then
+    add(opts.keymaps.float.clear_result, "Clear result")
+  end
   add(opts.keymaps.float.next, "Next")
   add(opts.keymaps.float.previous, "Previous")
   add(opts.keymaps.float.return_to_chat, "Return")
@@ -52,18 +55,22 @@ local function position_cursor(winnr, reference, lines, opts, view)
   vim.api.nvim_win_set_cursor(winnr, { math.min(2, #lines), 0 })
 end
 
----@param result { name: string? } Current title data.
+---@param result { name: string?, estimated_tokens: number? } Title data; unavailable results may only include a name.
 ---@param index integer Reference index.
 ---@param reference_count integer Number of ordered references.
 ---@param view string Current float view.
 ---@return string
 local function build_title(result, index, reference_count, view)
   local label = view == "call" and "Tool Call" or "Tool Result"
-  return string.format("%s: %s [%d/%d]", label, result.name or "unknown", index, reference_count)
+  local title = string.format("%s: %s [%d/%d]", label, result.name or "unknown", index, reference_count)
+  -- a ? b : c
+  local estimate = type(result.estimated_tokens) == "number"
+    and string.format("~%d tokens", result.estimated_tokens) or "estimate unavailable"
+  return string.format("%s (%s)", title, estimate)
 end
 
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param view string Current view.
 ---@param lines string[] Rendered result lines.
 ---@param title string Float title.
@@ -84,7 +91,7 @@ local function update_float(chat_state, reference, view, lines, title, opts, ui)
   float.call_id = reference.call_id
   float.view = view
   -- Reset reused cursor on view/call change, might be changed again by positioning logic.
-  if view_changed or (view == "call" and call_changed) then
+  if view_changed or call_changed then
     vim.api.nvim_win_set_cursor(float.winnr, { 1, 0 })
   end
   position_cursor(float.winnr, reference, lines, opts, view)
@@ -125,14 +132,14 @@ local function return_to_chat(chat_state, call_id, reconcile, close)
 end
 
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param view string Current view.
 ---@param lines string[] Rendered result lines.
 ---@param title string Float title.
 ---@param opts table Extension options.
 ---@param ui table UI adapter.
 ---@param adapter table Message adapter.
----@param reconcile fun(chat_state: table) Reconcile current chat messages.
+---@param reconcile fun(chat_state: CodeCompanionToolresults.ChatState) Reconcile current CodeCompanion messages.
 ---@param renderer_context table Renderer dependencies.
 local function create_float(chat_state, reference, view, lines, title, opts, ui, adapter, reconcile, renderer_context)
   if chat_state.float then
@@ -191,8 +198,27 @@ local function create_float(chat_state, reference, view, lines, title, opts, ui,
     M.show(chat_state, chat_state.references[index], index, opts, adapter, ui, reconcile, renderer_context, next_view)
   end
 
+  local function clear_result()
+    if float.view ~= "result" or not renderer_context.clear_result then
+      return
+    end
+
+    local call_id = float.call_id
+    renderer_context.clear_result(chat_state, call_id, function(changed)
+      if not changed or chat_state.float ~= float or float.call_id ~= call_id then
+        return
+      end
+      reconcile(chat_state)
+      local index = current_index()
+      if index then
+        M.show(chat_state, chat_state.references[index], index, opts, adapter, ui, reconcile, renderer_context, float.view)
+      end
+    end)
+  end
+
   local mappings = {
     { "n", opts.keymaps.float.toggle_view, toggle_view, "Toggle tool call/result" },
+    { "n", opts.keymaps.float.clear_result, clear_result, "Clear tool result from future local context" },
     { "n", opts.keymaps.float.next, function() move(1) end, "Next tool result" },
     { "n", opts.keymaps.float.previous, function() move(-1) end, "Previous tool result" },
     { "n", opts.keymaps.float.close, close, "Close tool result" },
@@ -213,19 +239,21 @@ end
 ---The explicit dependencies keep CodeCompanion integration at the call boundary
 ---and make this module straightforward to test without global plugin state.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param index integer Reference index.
 ---@param opts table Extension options.
 ---@param adapter table Message adapter.
 ---@param ui table UI adapter.
 ---@param reconcile fun(chat_state: table) Reconcile current chat messages.
 ---@param renderer_context table Renderer dependencies.
----@param view? string View to display; defaults to current float view or result.
+---@param view? "call"|"result" View to display; defaults to the current float view, then the last chat view, then result.
 ---@return boolean displayed Whether the result was displayed.
 function M.show(chat_state, reference, index, opts, adapter, ui, reconcile, renderer_context, view)
-  view = view or "result"
+  view = view or (chat_state.float and chat_state.float.view) or chat_state.view or "result"
   local lines
   local title
+  -- Resolve the current result once per display by call_id, so checkpoint/context-edit metadata refreshes with content.
+  local result = adapter.find_tool_result(chat_state.messages, reference.call_id)
   if view == "call" then
     local call = adapter.find_tool_call(chat_state.messages, reference.call_id)
     if not call then
@@ -233,10 +261,14 @@ function M.show(chat_state, reference, index, opts, adapter, ui, reconcile, rend
       return false
     end
     lines = renderers.render_call(call, opts)
-    title = build_title(call, index, #chat_state.references, view)
+    title = build_title(result or { name = call.name }, index, #chat_state.references, view)
   else
-    local result = adapter.find_tool_result(chat_state.messages, reference.call_id)
     if not result then
+      local unavailable_title = build_title({ name = reference.name }, index, #chat_state.references, view)
+      local unavailable_lines = { "Tool result unavailable." }
+      if chat_state.float and chat_state.float.call_id == reference.call_id then
+        update_float(chat_state, reference, view, unavailable_lines, unavailable_title, opts, ui)
+      end
       vim.notify(string.format("Tool result unavailable: %s (%s)", reference.name or "?", tostring(reference.call_id or "?")), vim.log.levels.WARN)
       return false
     end
@@ -244,11 +276,12 @@ function M.show(chat_state, reference, index, opts, adapter, ui, reconcile, rend
     title = build_title(result, index, #chat_state.references, view)
   end
 
-  if update_float(chat_state, reference, view, lines, title, opts, ui) then
-    return true
+  if not update_float(chat_state, reference, view, lines, title, opts, ui) then
+    create_float(chat_state, reference, view, lines, title, opts, ui, adapter, reconcile, renderer_context)
   end
 
-  create_float(chat_state, reference, view, lines, title, opts, ui, adapter, reconcile, renderer_context)
+  -- Result view is the initial default; retain the last successful choice across float closure within this chat.
+  chat_state.view = view
   return true
 end
 
