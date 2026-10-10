@@ -1,7 +1,7 @@
 local M = {}
 
 ---Build the exact rendered label expected for a reference when possible.
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@return string? label Exact label, or nil when only tool name is known.
 local function expected_label(reference)
   if reference.status == "invalidated" then
@@ -16,7 +16,7 @@ end
 ---Check whether rendered buffer lines starting at a position match a reference label.
 ---@param lines string[] Rendered buffer lines.
 ---@param start_line_number integer 1-based starting line.
----@param reference table Tool reference.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@return integer? last_line Last matching line, or nil.
 local function matching_label_end(lines, start_line_number, reference)
   local label = expected_label(reference)
@@ -74,7 +74,7 @@ end
 
 ---Find rendered line positions for tool references.
 ---@param bufnr integer
----@param references table[] Tool references in rendered message order.
+---@param references CodeCompanionToolresults.ToolReference[] Tool references in rendered message order.
 ---@return table<string, integer> positions Map from call ID to 1-based buffer line.
 ---@return table diagnostics Unresolved references and detected mapping problems.
 function M.find_tool_lines(bufnr, references)
@@ -124,10 +124,10 @@ function M.find_tool_lines(bufnr, references)
 end
 
 ---Find a tool reference based on the cursor line and configured selection mode.
----@param references table[] Tool references with current line positions.
+---@param references CodeCompanionToolresults.ToolReference[] Tool references with current line positions.
 ---@param line integer 1-based cursor line.
 ---@param mode string One of `exact`, `nearest`, `above`, or `below`.
----@return table?, integer? Matching tool reference and its ordered index, or nil when absent.
+---@return CodeCompanionToolresults.ToolReference?, integer? Matching tool reference and its ordered index, or nil when absent.
 function M.find_reference_at_cursor(references, line, mode)
   -- nil by default
   local selected_reference, selected_index, selected_distance
