@@ -51,6 +51,9 @@ lua/codecompanion_toolresults/init.lua
 lua/codecompanion_toolresults/display.lua
   Result/call lookup handoff, managed float lifecycle, cursor placement, view toggle, and float-local mappings
 
+lua/codecompanion_toolresults/redaction.lua
+  Cancellable clear workflow, reason input, confirmation, and completion handling
+
 lua/codecompanion_toolresults/navigation.lua
   Ordered next/previous result index navigation
 
@@ -66,7 +69,7 @@ lua/codecompanion_toolresults/renderers.lua
 ### ADAPTERS - directly reference codecompanion core logic that is not necessary set in stone
 
 lua/codecompanion_toolresults/adapters/messages.lua
-  CodeCompanion message extraction and result lookup
+  CodeCompanion message extraction, result lookup, and guarded tool-result mutation
 
 lua/codecompanion_toolresults/adapters/ui.lua
   CodeCompanion UI integration and floating-window configuration
@@ -122,12 +125,58 @@ The extension follows CodeCompanion's current message state:
 
 The extension does not create persistent tool-output history.
 
+Result-view titles show selected tool message's existing `_meta.estimated_tokens` as an approximate token count, and retain that estimate in the title while the float shows call arguments.
+Each display and refresh resolves current message by `call_id`; no estimate or output copy is cached.
+Scheduled post-tool reconciliation and `on_checkpoint` refresh open float, including after CodeCompanion context editing.
+Missing estimate metadata appears as unavailable.
+This is CodeCompanion's lightweight heuristic, not an exact provider count.
+
+## Manual tool-result context curation
+
+The result float supports clearing a selected tool result from future local chat context.
+Intended use is context curation after seeing an irrelevant or oversized result—for example, a broad grep returns Python matches before the user realises the task concerns C++.
+
+The float's `r` action clears result content from future local context.
+Reason presets cover irrelevant results, wrong language or path, redundancy, and excessive output.
+Optional custom explanations are limited to 160 UTF-8 bytes and normalised to one line.
+`Clear without reason` is available.
+Each `vim.ui.select`/`vim.ui.input` prompt states `<Esc>` cancellation; Cancel or empty custom input is no-op.
+Final confirmation is required.
+The original output is not saved for undo.
+
+After confirmation, plugin resolves one tool result by `call_id` and replaces only its content with `User cleared this tool result.` plus optional reason.
+Tool-call/result pairing and message identity remain intact.
+The messages adapter loads CodeCompanion's token utility and refreshes `_meta.estimated_tokens` with its heuristic calculator when available; the redaction workflow has no token-estimation dependency.
+If loading or calculation fails, stale estimate metadata is removed.
+No savings estimate is displayed.
+The replacement is written to the current tool message, but session save/restore behaviour has not been integration-tested.
+CodeCompanion's current session serialiser preserves only `_meta.tag`, so the plugin's cleared-state flag is lost on restore and the action may be offered again.
+TODO: Ask Oli Morris for a supported way to persist namespaced plugin metadata; do not overload unrelated message fields as a workaround.
+
+The mutation boundary is the unique current tool message identified by `call_id`.
+Use rendered chat-buffer text only to locate visible tool-call lines.
+Identify and mutate tool results in CodeCompanion's current messages by `call_id`, not by matching rendered text.
+CodeCompanion may render `for_user` content differently from stored tool content, and assistant messages may repeat output without a reliable per-result range.
+Clearing changes only the selected tool message for future local requests; other transcript copies remain untouched.
+It does not change past requests or guarantee deletion from provider-managed context, so it is context curation rather than transcript or security redaction.
+The current request or tool batch blocks clearing.
+Tests cover exact call-ID targeting, ambiguity and missing results, cancellation and confirmation, unchanged rendered transcript, reason normalisation, metadata refresh, and preserved message identity.
+Manual integration verification is still needed for the next request payload, session save/restore, and automatic context editing or compaction.
+
+Queued clearing during active orchestration could make this feature useful mid-run, but is not currently supported.
+Investigate whether a queued mutation can safely apply at a defined orchestration boundary without changing messages consumed by the active request or tool batch.
+Check whether CodeCompanion's `btw` feature offers a safe interaction point, and verify message-consumption timing before designing or documenting a queueing contract.
+
 ## Result float behavior
 
-The extension maintains one managed result float per chat. `gT` creates it when needed; later displays update the existing float. If the user closes the float manually, the next display or float-local navigation detects the invalid window and recreates it.
+The extension maintains one managed result float per chat.
+`gT` creates it when needed; later displays update the existing float.
+If the user closes the float manually, the next display or float-local navigation detects the invalid window and recreates it.
 
 The float title includes current view and ordered position, such as `Tool Result: read_file [2/5]` or `Tool Call: read_file [2/5]`.
 `K` toggles between the current result and its matching call arguments; `<Tab>` and `<S-Tab>` preserve the selected view as the user browses calls/results.
+Result view is the initial default, then the last selected view is retained per chat after the float closes and reopens.
+Closing the chat discards this presentation preference.
 Arguments are looked up by `call_id` from current messages only when requested and are not retained in extension state.
 Structured arguments render as fenced, sorted JSON; `run_command` input renders in a neutral `text` fence to mark multiline command boundaries without implying an execution shell.
 Any additional `run_command` arguments appear under `Other arguments` as fenced JSON; that section stays omitted when command is only input.

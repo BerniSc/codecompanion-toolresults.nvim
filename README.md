@@ -46,6 +46,7 @@ extensions = {
           next = "<Tab>",
           previous = "<S-Tab>",
           toggle_view = "K",
+          clear_result = "r",
           close = "q",
           escape = "<Esc>",
           return_to_chat = "gT",
@@ -74,6 +75,7 @@ Features:
 - Inheriting CodeCompanions floating-window dimensions and options.
 - One reusable managed result float per chat.
 - Float-local result navigation, call/result view toggle, and close mappings.
+- Manual tool-result context curation, removing selected results from future local chat context.
 - Result position in the float title.
 - Safe float recreation after manual close.
 - Renderer registry with fallback rendering.
@@ -86,8 +88,17 @@ Features:
 3. Move the cursor to a rendered tool-call line, such as `run_command: date`.
 4. Press `gT` to display its result. By default, the cursor must be on that line. Optionally configure `cursor.mode` to select the nearest tool label or nearest label strictly above or below the cursor. Use `gtn` to move to the next tool-call line or `gtp` to move to the previous one.
 
-The current result opens in a floating window. The result is looked up from CodeCompanion's current message stack when requested; this extension does not maintain a second output history.
-This means it will match CodeCompanions context management.
+The float title shows an approximate token estimate for the selected result message, including in call view, for example `Tool Result: grep_search [1/3] (~240 tokens)`.
+This is CodeCompanion's lightweight heuristic, not an exact provider token count.
+The estimate follows the current result by `call_id` and refreshes after navigation, checkpoints, and context edits.
+The title shows `estimate unavailable` when estimate metadata is absent.
+
+### Manually clear a tool result
+
+Press `r` in the result float to remove the selected result from future local chat context.
+The action requires confirmation and is available only when the current request and tool batch have finished.
+See [Clear a result](#clear-a-result) for reasons, cancellation, and limitations.
+
 
 For runtime issues, call `codecompanion.extensions.toolresults.dump()` from inside Neovim. It writes a focused, on-demand diagnostic snapshot to a unique temporary directory and returns the directory path. Each tracked chat gets separate `messages.json`, `references.json`, `tools.json`, `buffer-metadata.json`, and human-readable `buffer.txt` files. Message content may contain sensitive data; inspect the files before sharing them.
 
@@ -103,18 +114,29 @@ The extension reuses one managed result float per chat. Displaying another resul
 
 While focused inside the float:
 
-- `K` toggles between the current tool call and its result. Structured arguments display as fenced JSON; `run_command` input displays in a `text` fence. The selected view persists while browsing with `<Tab>` and `<S-Tab>`.
+`K` toggles between the current tool call and its result.
+Structured arguments display as fenced JSON; `run_command` input displays in a `text` fence.
+Result view is the default when first opening a chat's float.
+The selected view persists while browsing with `<Tab>` and `<S-Tab>`, and after closing and reopening the float in the same chat.
+
 - `<Tab>` shows the next result.
 - `<S-Tab>` shows the previous result.
 - `q` closes the float.
 - `<Esc>` closes the float.
 - `gT` closes the float and returns to the corresponding tool-call line in the chat.
 
-Navigation wraps from last result to first and from first result to last. It uses ordered tool references, independently of chat-buffer cursor position. If the float is manually closed, the next display or navigation action recreates it safely. Closing the parent chat also closes its managed result float.
+Navigation wraps from last result to first and from first result to last.
+It uses ordered tool references, independently of chat-buffer cursor position.
+If the float is manually closed, the next display or navigation action recreates it safely in the last selected view for that chat.
+Closing the parent chat discards that view preference and closes its managed result float.
 
-Mappings are configurable under `keymaps.float`: `toggle_view`, `next`, `previous`, `close`, `escape`, and `return_to_chat`. Set an option to `false` to disable its mapping. `K` is buffer-local to the managed float and overrides Neovim's keyword lookup there; set `toggle_view = false` or choose another key to avoid that conflict.
+Float mappings are configurable under `keymaps.float`: `toggle_view`, `clear_result`, `next`, `previous`, `close`, `escape`, and `return_to_chat`.
+Set an option to `false` to disable its mapping.
+`K` is the default call/result toggle; it is buffer-local to the managed float and overrides Neovim's keyword lookup there.
 
-The optional winbar displays configured float-local mappings at the top of the result window. Keymap options set to `false` are not shown. Set `float.show_keymaps = false` to hide the winbar while keeping keymap behavior unchanged.
+The optional winbar displays configured float-local mappings at the top of the result window.
+Keymap options set to `false` are not shown.
+Set `float.show_keymaps = false` to hide the winbar while keeping keymap behavior unchanged.
 
 
 ## Options
@@ -125,7 +147,8 @@ The optional winbar displays configured float-local mappings at the top of the r
 | `keymaps.chat.show` | `"gT"` | Chat-buffer keymap for displaying a result. Set to `false` to disable. |
 | `keymaps.chat.next` | `"gtn"` | Chat-buffer keymap for moving to next tool result. Set to `false` to disable. |
 | `keymaps.chat.previous` | `"gtp"` | Chat-buffer keymap for moving to previous tool result. Set to `false` to disable. |
-| `keymaps.float.toggle_view` | `"K"` | Float-local toggle between tool-call arguments and result. The selected view persists during result navigation. Set to `false` to disable. |
+| `keymaps.float.toggle_view` | `"K"` | Float-local toggle between tool-call arguments and result. Result view is the initial default; the selected view persists during result navigation and after closing/reopening the float in the same chat. Set to `false` to disable. |
+| `keymaps.float.clear_result` | `"r"` | Open cancelable flow to clear selected result from future local chat context. Set to `false` to disable. |
 | `keymaps.float.next` | `"<Tab>"` | Float-local next-result mapping. Set to `false` to disable. |
 | `keymaps.float.previous` | `"<S-Tab>"` | Float-local previous-result mapping. Set to `false` to disable. |
 | `keymaps.float.close` | `"q"` | Float-local close mapping. Set to `false` to disable. |
@@ -138,11 +161,32 @@ The optional winbar displays configured float-local mappings at the top of the r
 
 The diagnostic dump does not require `debug` or `debug_buffer` to be enabled.
 
-## Behavior after context management
+## Clear a result
+
+In the result float, press `r` to remove the selected result from future local chat context.
+Choose a preset reason, select `Other…` to enter a short explanation, or clear without a reason.
+Prompts explain cancellation: press `<Esc>`, choose `Cancel`, or leave the custom reason empty.
+Custom reasons are limited to 160 UTF-8 bytes and normalised to one line.
+Nothing changes until you accept the final confirmation.
+Clearing is available only after CodeCompanion finishes the current request and tool batch; while either is active, the action is refused without changing messages.
+The action is irreversible in this plugin because the original output is not retained for undo.
+
+Clearing replaces only the selected tool message's stored content with `User cleared this tool result.` and the optional reason.
+The tool-call/result pairing remains intact.
+Clearing does not edit the rendered chat buffer or other messages, which may repeat the tool output.
+It curates one tool result for future local context; it does not redact every copy from the conversation.
+The replacement is written to the current tool message, but session save/restore behaviour has not been integration-tested.
+CodeCompanion's current session serialiser preserves only `_meta.tag`, so the plugin's cleared-state flag is lost on restore and the action may be offered again.
+Clearing cannot change past requests or guarantee removal from provider-managed context.
+No token-savings estimate is shown because per-message token metadata is heuristic, not an exact provider count.
+
+
+## Behaviour after context management
 
 CodeCompanion may edit or compact older tool results. If a result is still present, `gT` displays its current content. If CodeCompanion has replaced or removed it, the extension reports that the result is unavailable.
 
 The extension does not preserve removed output.
+
 
 ## Architecture
 
