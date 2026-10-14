@@ -10,7 +10,7 @@
 ---@field message_id number? CodeCompanion message identifier; secondary to call_id.
 ---@field message_index integer? Current message index; not stable across context management.
 ---@field line integer? Current rendered chat-buffer line; presentation state only.
----@field status CodeCompanionToolresults.Status
+---@field status CodeCompanionToolresults.Status Whether the tool result is available or was invalidated by rejection/cancellation.
 
 ---@class CodeCompanionToolresults.ToolResult
 ---@field call_id string Stable CodeCompanion tool-call identifier.
@@ -61,5 +61,9 @@
 ---@field tools table<string, CodeCompanionToolresults.ToolReference> References indexed by call_id.
 ---@field float CodeCompanionToolresults.FloatState?
 ---@field view? "call"|"result" Last successfully displayed view; defaults to result and survives float closure for this chat.
+---@field hover_preview? { bufnr: integer, winnr: integer, footer_bufnr?: integer, footer_winnr?: integer } Transient preview and bottom-rim hint windows and buffers.
+---@field hover_timer? any Transient mouse-hover debounce timer.
+---@field hover_mouse? { line: integer, winid: integer } Last chat line and window under the pointer.
+---@field hovered_call_id? string Tool selected by the active hover preview.
 
 return {}
