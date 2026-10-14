@@ -211,6 +211,27 @@ T["find_tool_lines"]["matches a command flattened after embedded newlines"] = fu
   vim.api.nvim_buf_delete(bufnr, { force = true })
 end
 
+T["find_tool_lines"]["matches flattened multiline command labels with collapsed indentation"] = function()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+    "run_command: python3 - <<'PY' x y PY",
+    "Following response",
+  })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, {
+    {
+      call_id = "call-indented-heredoc",
+      name = "run_command",
+      command = "python3 - <<'PY'\n    x\n      y\nPY",
+      status = "available",
+    },
+  })
+
+  MiniTest.expect.equality(positions, { ["call-indented-heredoc"] = 1 })
+  MiniTest.expect.equality(diagnostics, { unresolved = {}, ambiguous = 0 })
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
 T["find_tool_lines"]["matches a command label when CodeCompanion omits its trailing newline"] = function()
   local bufnr = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
