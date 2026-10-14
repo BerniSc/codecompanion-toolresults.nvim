@@ -211,6 +211,27 @@ T["find_tool_lines"]["matches a command flattened after embedded newlines"] = fu
   vim.api.nvim_buf_delete(bufnr, { force = true })
 end
 
+T["find_tool_lines"]["matches a command label when CodeCompanion omits its trailing newline"] = function()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+    "run_command: printf 'Hello, World!'",
+    "Following response",
+  })
+
+  local positions, diagnostics = position.find_tool_lines(bufnr, {
+    {
+      call_id = "call-trailing-newline",
+      name = "run_command",
+      command = "printf 'Hello, World!'\n",
+      status = "available",
+    },
+  })
+
+  MiniTest.expect.equality(positions, { ["call-trailing-newline"] = 1 })
+  MiniTest.expect.equality(diagnostics, { unresolved = {}, ambiguous = 0 })
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
 T["find_tool_lines"]["matches each newline escape depth correctly"] = function()
   local bufnr = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {

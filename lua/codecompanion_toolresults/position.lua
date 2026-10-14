@@ -63,8 +63,9 @@ local function matching_label_end(lines, start_line_number, reference)
     end
   end
 
-  -- CodeCompanion may flatten embedded command newlines to spaces in the chat buffer.
-  local flattened_label = label:gsub("\r?\n", " ")
+  -- CodeCompanion may flatten embedded command newlines to spaces in the chat buffer,
+  -- while dropping trailing newlines from the rendered label.
+  local flattened_label = label:gsub("[\r\n]+$", ""):gsub("\r?\n", " ")
   if lines[start_line_number] == flattened_label then
     return start_line_number
   end
