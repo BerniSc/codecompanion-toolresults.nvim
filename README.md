@@ -36,6 +36,12 @@ extensions = {
       cursor = {
         mode = "exact", -- "exact" (default), "nearest", "above", or "below".
       },
+      hover = {
+        enabled = false, -- Set true and enable vim.o.mousemoveevent.
+        delay = 500,
+        max_lines = 12,
+        max_width = 80,
+      },
       keymaps = {
         chat = {
           show = "gT",
@@ -71,6 +77,7 @@ Features:
 - Per-chat tool-call observation.
 - Partial lookup in batched calls.
 - Cursor-based lookup with `gT`, supporting exact (default), nearest, above, and below selection modes.
+- Optional mouse hover previews for available tool results.
 - Configurable cursor navigation with `gtn` and `gtp`.
 - Inheriting CodeCompanions floating-window dimensions and options.
 - One reusable managed result float per chat.
@@ -92,6 +99,23 @@ The float title shows an approximate token estimate for the selected result mess
 This is CodeCompanion's lightweight heuristic, not an exact provider token count.
 The estimate follows the current result by `call_id` and refreshes after navigation, checkpoints, and context edits.
 The title shows `estimate unavailable` when estimate metadata is absent.
+
+### Mouse hover preview
+
+Hover previews are disabled by default.
+To enable them, set `hover.enabled = true` and enable Neovim's global `vim.o.mousemoveevent` option.
+The plugin does not change that option.
+
+In normal mode, keep the pointer over a tool-call line until `hover.delay` expires to open a scrollable preview.
+The preview is limited by `hover.max_lines` and `hover.max_width`.
+Its top border shows the tool name, and its body contains only result lines.
+The bottom hint shows the configured `keymaps.chat.show` key and indicates when more lines are available.
+Press that key in the preview to open the full result.
+Set `keymaps.chat.show = false` to disable the key and hint.
+
+A preview appears only when the current result is available.
+A pending or unavailable result does not open a preview or show a notification.
+The preview closes when you leave the chat or enter Insert mode.
 
 ### Manually clear a tool result
 
@@ -144,6 +168,10 @@ Set `float.show_keymaps = false` to hide the winbar while keeping keymap behavio
 | Option | Default | Description |
 | --- | --- | --- |
 | `cursor.mode` | `"exact"` | How `gT` selects a result relative to cursor line: `exact` requires a tool label on that line; `nearest` selects closest label and prefers one above on ties; `above` selects closest label strictly above; `below` selects closest label strictly below. |
+| `hover.enabled` | `false` | Enable per-chat mouse hover previews using a buffer-local `<MouseMove>` mapping. Requires `vim.o.mousemoveevent = true`; plugin does not change this global option. If `keymaps.chat.show` is `false`, preview has no full-result key hint or mapping. |
+| `hover.delay` | `500` | Milliseconds pointer must remain on a chat line before preview. |
+| `hover.max_lines` | `12` | Maximum number of result lines shown in the preview before scrolling. |
+| `hover.max_width` | `80` | Maximum preview width in columns. |
 | `keymaps.chat.show` | `"gT"` | Chat-buffer keymap for displaying a result. Set to `false` to disable. |
 | `keymaps.chat.next` | `"gtn"` | Chat-buffer keymap for moving to next tool result. Set to `false` to disable. |
 | `keymaps.chat.previous` | `"gtp"` | Chat-buffer keymap for moving to previous tool result. Set to `false` to disable. |

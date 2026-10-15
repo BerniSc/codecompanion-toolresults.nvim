@@ -23,6 +23,15 @@ This plugin stores references and presentation metadata only.
 9. The extension resolves the current result by `call_id` and opens it in a CodeCompanion-styled floating window.
 10. `K` optionally switches that float to the matching current tool-call arguments, also looked up by `call_id`.
 
+## Mouse hover interaction
+
+When enabled, the user can pause the pointer over a rendered tool label to preview its available result without opening the managed result float.
+The buffer-local `<MouseMove>` mapping debounces movement and rechecks the pointer after scrolling.
+The extension resolves the current result by `call_id` and passes it through the existing renderer.
+The preview is transient and contains rendered result lines; its top border shows the tool name, and its bottom hint shows the full-result key and indicates when more lines are available.
+The preview closes when the user enters Insert mode or moves the pointer outside the chat, but moving the pointer over the preview itself leaves it open.
+A pending or unavailable result does not open a preview or show a notification.
+
 ## Data ownership
 
 CodeCompanion owns message content.
@@ -34,6 +43,7 @@ The extension keeps per-chat state containing:
 - current message table reference
 - tool references
 - current rendered line positions
+- transient hover preview handles and debounce timer, while preview is active
 
 A tool reference contains metadata such as `call_id`, tool name, message ID, rendered line, and status.
 
@@ -60,11 +70,17 @@ lua/codecompanion_toolresults/navigation.lua
 lua/codecompanion_toolresults/position.lua
   Rendered line detection and cursor lookup
 
+lua/codecompanion_toolresults/hover.lua
+  Buffer-local mouse mapping, hover debounce, transient preview windows, and cleanup
+
 lua/codecompanion_toolresults/diagnostics.lua
   On-demand runtime state and buffer diagnostic dump
 
 lua/codecompanion_toolresults/renderers.lua
   Renderer registry, fallback rendering, and tool-specific result presentation
+
+lua/codecompanion_toolresults/types.lua
+  Shared state and tool-reference type annotations
 
 ### ADAPTERS - directly reference codecompanion core logic that is not necessary set in stone
 
@@ -75,6 +91,10 @@ lua/codecompanion_toolresults/adapters/ui.lua
   CodeCompanion UI integration and floating-window configuration
 
 ```
+
+The `init.lua` orchestrator resolves a hovered label to its current result by `call_id`, invokes the renderer, and passes the resulting lines to `hover.lua`.
+The hover module owns mouse handling and transient preview windows; it does not retain tool output as plugin history.
+Renderers only convert result data to display lines and do not manage hover state or floats.
 
 The `_extensions` module stays thin. The plugin namespace contains feature logic. CodeCompanion-specific assumptions stay under `adapters/` where possible.
 
@@ -211,7 +231,8 @@ Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanio
 - `on_tool_output` runs before CodeCompanion inserts the result. Scheduled reconciliation reduces this gap but is not an exact post-insert event.
 - Exact per-tool post-insert observation would require a public CodeCompanion callback exposing the completed call ID or message.
 - The floating-window helper is an internal CodeCompanion API, but mapped via adapter.
-- Mouse hover is not implemented.
+- Mouse hover requires Neovim's global `mousemoveevent`; the plugin does not enable or change that option.
+- Mouse-event delivery, focus transitions, and preview placement have not been manually verified across terminal UIs.
 - `run_command` display formatting currently defaults to a `bash` command label, configurable via `run_command_language`. Still requires some unintuitive user interaction.
 
 ## Development stages
@@ -245,7 +266,7 @@ Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanio
 5. Switch to better tool detection and extmark-based referencing for automatic tracking in the buffer.
 6. Improve float sizing and window options.
 7. Document supported CodeCompanion versions.
-8. Add mouse or hover interaction if cursor behavior remains stable.
+8. Harden the opt-in mouse hover preview: verify behaviour across terminal UIs, scrolling, narrow windows, mouse focus transitions, and configured keymaps.
 
 ### Optional later work
 
