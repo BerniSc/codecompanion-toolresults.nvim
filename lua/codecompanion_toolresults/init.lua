@@ -7,6 +7,7 @@ local ui = require("codecompanion_toolresults.adapters.ui")
 local position = require("codecompanion_toolresults.position")
 local display = require("codecompanion_toolresults.display")
 local redaction = require("codecompanion_toolresults.redaction")
+local hover = require("codecompanion_toolresults.hover")
 
 ---@type table<integer, CodeCompanionToolresults.ChatState>
 local state_by_bufnr = {}
@@ -18,6 +19,17 @@ local valid_cursor_modes = {
   above = true,
   below = true,
 }
+
+local function validate_hover_options(hoverOpts)
+  assert(type(hoverOpts.enabled) == "boolean", "hover.enabled must be a boolean")
+
+  for _, name in ipairs({ "delay", "max_lines", "max_width" }) do
+    local value = hoverOpts[name]
+    local minimum = name == "delay" and 0 or 1
+    assert(type(value) == "number" and value >= minimum and value % 1 == 0,
+           string.format("hover.%s must be an integer >= %d", name, minimum))
+  end
+end
 
 local defaults = {
   debug = false,
@@ -43,6 +55,12 @@ local defaults = {
   },
   cursor = {
     mode = "exact",
+  },
+  hover = {
+    enabled = false,
+    delay = 500,
+    max_lines = 12,
+    max_width = 80,
   },
   run_command_language = "bash", -- Display command snippets as bash; change label or set false to keep raw output.
 }
@@ -287,23 +305,36 @@ local function refresh_managed_float(chat_state)
   display.show(chat_state, chat_state.references[index], index, M._opts, adapter, ui, reconcile_messages, make_renderer_context(), float.view)
 end
 
----Display the current tool result under the cursor.
+---Display a tool result selected by cursor position or call ID.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
+---@param hovered_call_id string? Stable tool identity supplied by an asynchronous hover callback.
 ---@return nil
-local function display_tool_reference(chat_state)
+local function display_tool_reference(chat_state, hovered_call_id)
   -- it is possible that the chat has changed since last "scan". For example a newline could have been added
   -- or a line deleted which moves the toolresults. We therefore should refresh the chatstate on tryin to
   -- display at a certain line to ensure there is in fact a toolcall there.
   refresh_positions(chat_state)
 
-  -- 1-based line coordinate of cursor in current window.
-  local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
-
   -- TODO Think about maybe sorting/persisting state. Maybe bad for refreshes, but sorting and persisting could improve
   -- O(n) lookup time on average. We are most likely to lookup tools that are close the the end of the chat and order is
   -- unlikely to change anyhow
   local mode = M._opts.cursor.mode
-  local reference, index = position.find_reference_at_cursor(chat_state.references, cursor_line, mode)
+  local reference, index
+  if hovered_call_id then
+    -- When we have an active hovered_call_id we want to open its float, no matter the cursor.
+    for reference_index, candidate in ipairs(chat_state.references) do
+      if candidate.call_id == hovered_call_id then
+        reference, index = candidate, reference_index
+        break
+      end
+    end
+  else
+    -- Keypresses use the current cursor position.
+    -- Hover callbacks use call ID because the cursor may move before they run.
+    -- 1-based line coordinate of cursor in current window.
+    local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+    reference, index = position.find_reference_at_cursor(chat_state.references, cursor_line, mode)
+  end
   if not reference then
     -- Keep feedback mode-specific: exact mode should not imply that moving closer is sufficient.
     local messages = {
@@ -320,6 +351,36 @@ local function display_tool_reference(chat_state)
   assert(index, "toolreference lookup returned no index")
   -- Resolve and render the current result through the display module.
   display.show(chat_state, reference, index, M._opts, adapter, ui, reconcile_messages, make_renderer_context())
+end
+
+---Show the hovered tool result in a transient preview without focusing it.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
+---@param mouse table Mouse position from getmousepos().
+local function preview_tool_reference(chat_state, mouse)
+  refresh_positions(chat_state)
+  -- mouse.line is a 1-based buffer line number.
+  local reference = position.find_reference_at_cursor(chat_state.references, mouse.line, "exact")
+  if not reference then
+    chat_state.hovered_call_id = nil
+    hover.close(chat_state)
+    return
+  end
+
+  local result = adapter.find_tool_result(chat_state.messages, reference.call_id)
+  if not result then
+    chat_state.hovered_call_id = nil
+    hover.close(chat_state)
+    return
+  end
+
+  local lines = require("codecompanion_toolresults.renderers").render(reference, result, M._opts, make_renderer_context())
+  local keybind = M._opts.keymaps.chat.show
+  chat_state.hovered_call_id = reference.call_id
+  hover.show(chat_state, lines, mouse, M._opts.hover, reference.name, keybind, function()
+    display_tool_reference(chat_state, reference.call_id)
+    hover.close(chat_state)
+    chat_state.hovered_call_id = nil
+  end)
 end
 
 --- --------------------
@@ -347,9 +408,21 @@ local function attach_to_chat(chat, bufnr)
     messages = chat.messages or {},
     tools = {},
     float = nil,
+    hover_preview = nil,
+    hover_timer = nil,
+    hover_mouse = nil,
+    hovered_call_id = nil,
   }
 
   state_by_bufnr[bufnr] = chat_state
+
+  local cleanup_hover
+  if M._opts.hover.enabled then
+    -- Attach hover handlers now; retain the returned teardown callback for chat closure.
+    cleanup_hover = hover.attach(chat_state, bufnr, M._opts.hover, function(mouse)
+      preview_tool_reference(chat_state, mouse)
+    end)
+  end
 
   -- Reconcile immediately. Chats may be restored or attached after messages exist.
   reconcile_messages(chat_state)
@@ -402,6 +475,9 @@ local function attach_to_chat(chat, bufnr)
   -- The callback closes over this chat's state object. This is intentional: the registry entry could
   -- be replaced or removed before the callback runs.
   chat:add_callback("on_closed", function()
+    if cleanup_hover then
+      cleanup_hover()
+    end
     if chat_state.float then
       ui.close_float(chat_state.float.bufnr, chat_state.float.winnr)
       chat_state.float = nil
@@ -454,6 +530,7 @@ function M.setup(opts)
   -- merge with default options
   M._opts = vim.tbl_deep_extend("force", defaults, opts or {})
   assert(valid_cursor_modes[M._opts.cursor.mode], 'cursor.mode must be one of "exact", "nearest", "above", or "below"')
+  validate_hover_options(M._opts.hover)
   configured = true
 
   -- base keymaps
@@ -470,8 +547,11 @@ function M.setup(opts)
         local current_state = state_by_bufnr[vim.api.nvim_get_current_buf()]
 
         if current_state then
-          -- Handles non-tool locations itself gracefully.
-          display_tool_reference(current_state)
+          -- Selects the hovered result or falls back to the cursor; handles a missing result gracefully.
+          display_tool_reference(current_state, current_state.hovered_call_id)
+          -- Close any preview; hover.close is safe when no preview is open.
+          hover.close(current_state)
+          current_state.hovered_call_id = nil
         else
           vim.notify("No tracked CodeCompanion chat", vim.log.levels.INFO)
         end
