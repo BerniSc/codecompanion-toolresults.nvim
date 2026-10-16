@@ -63,8 +63,18 @@ function M.show(chat_state, lines, mouse, opts, tool_name, keybind, on_view_more
   end
 
   local title = truncate(tostring(tool_name or "Tool result"), math.max(1, preview_width - 2))
+
+  local footer_hints = {}
+  if keybind then
+    footer_hints[#footer_hints + 1] = keybind .. ": open"
+  end
+  if #lines > opts.max_lines then
+    footer_hints[#footer_hints + 1] = "↓ scroll for more"
+  end
+  local footer_height = #footer_hints > 0 and 1 or 0
+
   -- Keep preview within configured line limit, available result lines, and screen height.
-  local height = math.min(opts.max_lines, #preview_lines, math.max(1, vim.o.lines - 3))
+  local height = math.min(opts.max_lines, #preview_lines + footer_height, math.max(1, vim.o.lines - 3))
   -- Start at the pointer row, moving upwards as needed to keep the float on screen.
   local row = math.min(mouse.screenrow, math.max(0, vim.o.lines - height - 3))
   -- Keep the preview within the right edge, accounting for its border columns.
@@ -102,13 +112,6 @@ function M.show(chat_state, lines, mouse, opts, tool_name, keybind, on_view_more
   vim.wo[winnr].wrap = true
   vim.wo[winnr].scrolloff = 0
 
-  local footer_hints = {}
-  if keybind then
-    footer_hints[#footer_hints + 1] = keybind .. ": open"
-  end
-  if #lines > opts.max_lines then
-    footer_hints[#footer_hints + 1] = "↓ scroll for more"
-  end
   local footer_bufnr, footer_winnr
 
   if #footer_hints > 0 then
