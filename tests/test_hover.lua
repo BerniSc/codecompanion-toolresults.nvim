@@ -145,6 +145,36 @@ T["preview"]["close removes preview and footer windows and buffers"] = function(
   MiniTest.expect.equality(vim.api.nvim_buf_is_valid(preview.footer_bufnr), false)
 end
 
+T["preview"]["closes before scheduling full-result display"] = function()
+  local chat_state = {}
+  local scheduled, displayed_call_id
+
+  with_preview(chat_state, function()
+    hover.show(chat_state, { "result" }, { screenrow = 1, screencol = 1 }, preview_opts(), "read_file", "gT", function() end)
+    local preview = chat_state.hover_preview
+
+    with_overrides({ {
+      owner = vim,
+      key = "schedule",
+      value = function(callback)
+        scheduled = callback
+      end,
+    } }, function()
+      hover.open_full_result(chat_state, "call-target", function(call_id)
+        displayed_call_id = call_id
+      end)
+
+      MiniTest.expect.equality(chat_state.hover_preview, nil)
+      MiniTest.expect.equality(vim.api.nvim_win_is_valid(preview.winnr), false)
+      MiniTest.expect.equality(chat_state.hovered_call_id, nil)
+      MiniTest.expect.equality(displayed_call_id, nil)
+      MiniTest.expect.equality(type(scheduled), "function")
+      scheduled()
+      MiniTest.expect.equality(displayed_call_id, "call-target")
+    end)
+  end)
+end
+
 T["preview"]["omits full-result mapping when disabled"] = function()
   local chat_state = {}
   local mappings = {}

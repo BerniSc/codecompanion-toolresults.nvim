@@ -164,6 +164,19 @@ function M.close(chat_state)
   close(chat_state)
 end
 
+---Close the transient preview before scheduling its full-result window.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
+---@param call_id string Stable tool call identifier.
+---@param on_view_more fun(call_id: string) Open the managed result float for this call.
+---@return nil
+function M.open_full_result(chat_state, call_id, on_view_more)
+  close(chat_state)
+  chat_state.hovered_call_id = nil
+  vim.schedule(function()
+    on_view_more(call_id)
+  end)
+end
+
 ---Attach per-chat mouse preview handling and return its cleanup function.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param bufnr integer Chat buffer number.

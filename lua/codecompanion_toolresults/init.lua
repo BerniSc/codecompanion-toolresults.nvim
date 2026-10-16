@@ -377,9 +377,9 @@ local function preview_tool_reference(chat_state, mouse)
   local keybind = M._opts.keymaps.chat.show
   chat_state.hovered_call_id = reference.call_id
   hover.show(chat_state, lines, mouse, M._opts.hover, reference.name, keybind, function()
-    display_tool_reference(chat_state, reference.call_id)
-    hover.close(chat_state)
-    chat_state.hovered_call_id = nil
+    hover.open_full_result(chat_state, reference.call_id, function(call_id)
+      display_tool_reference(chat_state, call_id)
+    end)
   end)
 end
 
