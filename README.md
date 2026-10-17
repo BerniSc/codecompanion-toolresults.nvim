@@ -2,17 +2,27 @@
 
 Keep CodeCompanion chats readable while retaining access to tool results.
 
-Tool calls remain compact in the conversation. When you want more context, open the result behind a search, file read, command, or edit without bringing every line of output back into the chat.
+Tool calls remain compact in the conversation.
+When you want more context, open the result behind a search, file read, command, or edit without bringing every line of output back into the chat.
 
 Follow what the agent found, check its work, or catch it heading in the wrong direction, while keeping the conversation easy to scan.
 
-Place the cursor on a tool call and press `gT` to inspect its result. By default, `gT` requires the cursor to be on the tool label; set `cursor.mode` to opt into selecting a nearby result. Use `gtn` and `gtp` in the chat to jump between tool calls.
+Place the cursor on a tool call and press `gT` to inspect its result.
+By default, `gT` requires the cursor to be on the tool label; set `cursor.mode` to opt into selecting a nearby result.
+Use `gtn` and `gtp` in the chat to jump between tool calls.
 
 Inside the result float, use `<Tab>` and `<S-Tab>` to browse results, or press `gT` to return to the tool call.
 
 ## Demo
 
-https://github.com/user-attachments/assets/464935d3-c149-401c-8439-28025183f4f4
+https://github.com/user-attachments/assets/44e57528-a82c-41dc-b91d-94be22062c73
+
+## Compatibility and feedback
+
+This plugin is built and tested mainly around my workflow: CodeCompanion v19, Neovim 0.12, and CodeCompanion's HTTP adapters.
+I have not verified how it behaves with other versions or workflows.
+If you try it with a different setup, I’d be glad to hear how it goes.
+A GitHub star is a helpful signal that others find the plugin useful.
 
 ## Installation
 
@@ -67,6 +77,8 @@ extensions = {
 },
 ````
 
+For a concise Neovim reference, see `:help codecompanion-toolresults`.
+
 ## Current scope
 
 The extension lets you inspect and navigate current tool results in a per-chat floating window. It reads CodeCompanion's current messages rather than keeping its own output history. Results changed or removed by context management are therefore changed or unavailable here too.
@@ -86,7 +98,7 @@ Features:
 - Result position in the float title.
 - Safe float recreation after manual close.
 - Renderer registry with fallback rendering.
-- Tool-specific renderers for common file, search, command, and diagnostic results.
+- Tool-specific renderers for common file, search, command, diagnostic, and edit results.
 
 ## Usage
 
@@ -160,7 +172,7 @@ Set an option to `false` to disable its mapping.
 
 The optional winbar displays configured float-local mappings at the top of the result window.
 Keymap options set to `false` are not shown.
-Set `float.show_keymaps = false` to hide the winbar while keeping keymap behavior unchanged.
+Set `float.show_keymaps = false` to hide the winbar while keeping keymap behaviour unchanged.
 
 
 ## Options
@@ -215,6 +227,7 @@ CodeCompanion may edit or compact older tool results. If a result is still prese
 
 The extension does not preserve removed output.
 
+`insert_edit_into_file` results retain CodeCompanion's summary and append a unified-style patch derived from the current tool call's `oldText` and `newText` snippets. The patch shows the supplied changed text, not surrounding file context, because the tool arguments do not include a full before/after file snapshot. If call arguments are unavailable, the summary remains visible without a patch.
 
 ## Architecture
 
@@ -224,15 +237,20 @@ See [`docs/concept.md`](docs/concept.md) for detailed design, data flow, boundar
 
 ## Compatibility
 
-The extension uses CodeCompanion's chat callbacks and message structure. It also uses the internal `codecompanion.utils.ui.create_float` helper to match CodeCompanion's floating-window behavior. That dependency is isolated in `lua/codecompanion_toolresults/adapters/ui.lua`.
+The extension uses CodeCompanion's chat callbacks and message structure.
+It also uses the internal `codecompanion.utils.ui.create_float` helper to match CodeCompanion's floating-window behavior.
+That dependency is isolated in `lua/codecompanion_toolresults/adapters/ui.lua`.
 
 CodeCompanion changes may require adapter updates.
 
-`run_command` result formatting uses display-only code fences and does not assume a shell for execution. Tool-call arguments use fenced JSON for structured input and a neutral `text` fence for command input. Results from tools without a dedicated renderer use fallback string or `vim.inspect` formatting.
+`run_command` result formatting uses display-only code fences and does not assume a shell for execution.
+Tool-call arguments use fenced JSON for structured input and a neutral `text` fence for command input.
+Results from tools without a dedicated renderer use fallback string or `vim.inspect` formatting.
 
 ## Testing
 
-Tests use `mini.test` from `mini.nvim` as a development-only dependency. `make test` fetches it automatically into ignored `deps/mini.nvim`; it is not a runtime dependency.
+Tests use `mini.test` from `mini.nvim` as a development-only dependency.
+`make test` fetches it automatically into ignored `deps/mini.nvim`; it is not a runtime dependency.
 
 Run the full test suite:
 
@@ -252,13 +270,16 @@ Run one test file:
 make test_file FILE=tests/test_messages.lua
 ```
 
-Message adapter tests use both a more realistic CodeCompanion message-batch fixture and smaller atomic fixtures. The full fixture checks compatibility with real message structure; atomic fixtures keep individual behaviors easy to diagnose.
+Message adapter tests use both a more realistic CodeCompanion message-batch fixture and smaller atomic fixtures.
+The full fixture checks compatibility with real message structure; atomic fixtures keep individual behaviors easy to diagnose.
 
 ## Acknowledgements
 
 Thanks to [Oli Morris](https://github.com/olimorris) for creating [CodeCompanion.nvim](https://github.com/olimorris/codecompanion.nvim), which made this extension possible.
 
 This extension grew out of [CodeCompanion discussion #3360](https://github.com/olimorris/codecompanion.nvim/discussions/3360).
+
+When reporting an issue, please include your CodeCompanion and Neovim versions and, where possible, a minimal reproduction.
 
 Feedback, compatibility reports, and ideas for useful result renderers are welcome.
 
