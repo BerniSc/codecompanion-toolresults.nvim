@@ -95,6 +95,7 @@ lua/codecompanion_toolresults/adapters/ui.lua
 The `init.lua` orchestrator resolves a hovered label to its current result by `call_id`, invokes the renderer, and passes the resulting lines to `hover.lua`.
 The hover module owns mouse handling and transient preview windows; it does not retain tool output as plugin history.
 Renderers only convert result data to display lines and do not manage hover state or floats.
+The `insert_edit_into_file` renderer additionally receives the current matching call arguments and displays unified-style diffs for supplied `oldText`/`newText` snippets beneath the result summary. This is a snippet diff, not a full-file diff; arguments are resolved transiently by `call_id` and are not cached.
 
 The `_extensions` module stays thin. The plugin namespace contains feature logic. CodeCompanion-specific assumptions stay under `adapters/` where possible.
 

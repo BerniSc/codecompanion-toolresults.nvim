@@ -44,6 +44,7 @@
 ---@class CodeCompanionToolresults.RendererContext
 ---@field remove_run_command_prefix fun(content: string, command: string): string
 ---@field normalize_result fun(content: string): string, table
+---@field find_tool_call? fun(call_id: string): CodeCompanionToolresults.ToolCall? Resolve current tool-call arguments by call ID.
 
 ---@alias CodeCompanionToolresults.Renderer fun(reference: CodeCompanionToolresults.ToolReference, content: string, opts: table, context: CodeCompanionToolresults.RendererContext): string[]
 

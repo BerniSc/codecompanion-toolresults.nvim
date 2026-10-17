@@ -17,6 +17,16 @@ local context = {
   normalize_result = message_adapter.normalize_result,
 }
 
+local function edit_context(arguments)
+  return vim.tbl_extend("force", vim.deepcopy(context), {
+    find_tool_call = function(call_id)
+      if call_id == "call-edit-success" then
+        return { call_id = call_id, name = "insert_edit_into_file", arguments = arguments }
+      end
+    end,
+  })
+end
+
 T["truncation"] = MiniTest.new_set()
 
 T["truncation"]["moves a final CodeCompanion notice above the result"] = function()
@@ -72,6 +82,58 @@ end
 T["tool renderers"]["preserves diagnostics report"] = function()
   MiniTest.expect.equality(renderers.render(fixtures.get_diagnostics.diagnostics.reference, fixtures.get_diagnostics.diagnostics.result, opts, context),
     { "Diagnostics for `lua/example.lua` (2 found):", "1:1 ERROR lua-language-server undefined global `vim`", "4:5 WARNING lua-language-server unused local `value`", "", "Code:", "1: local value = vim.api.nvim_get_current_buf()", "4: return value" })
+end
+
+T["tool renderers"]["renders insert_edit_into_file summary followed by a patch"] = function()
+  MiniTest.expect.equality(renderers.render(fixtures.insert_edit_into_file.success_with_explanation.reference,
+    fixtures.insert_edit_into_file.success_with_explanation.result, opts, edit_context({
+      filepath = "/tmp/test",
+      edits = { { oldText = "Hello World!", newText = "Hell! Oh World!" } },
+    })), {
+    "Edited `README.md`",
+    "updated renderer documentation",
+    "",
+    "````diff",
+    "--- a/tmp/test",
+    "+++ b/tmp/test",
+    "@@ -1 +1 @@",
+    "-Hello World!",
+    "+Hell! Oh World!",
+    "````",
+  })
+end
+
+T["tool renderers"]["renders multiple insert_edit_into_file edits as separate patches"] = function()
+  MiniTest.expect.equality(renderers.render(fixtures.insert_edit_into_file.success_with_explanation.reference,
+    fixtures.insert_edit_into_file.success_with_explanation.result, opts, edit_context({
+      filepath = "test.lua",
+      edits = {
+        { oldText = "first", newText = "one" },
+        { oldText = "second", newText = "two" },
+      },
+    })), {
+    "Edited `README.md`",
+    "updated renderer documentation",
+    "",
+    "````diff",
+    "--- a/test.lua",
+    "+++ b/test.lua",
+    "@@ -1 +1 @@",
+    "-first",
+    "+one",
+    "--- a/test.lua",
+    "+++ b/test.lua",
+    "@@ -1 +1 @@",
+    "-second",
+    "+two",
+    "````",
+  })
+end
+
+T["tool renderers"]["keeps insert_edit_into_file summary when call arguments are unavailable"] = function()
+  MiniTest.expect.equality(renderers.render(fixtures.insert_edit_into_file.success_with_explanation.reference,
+    fixtures.insert_edit_into_file.success_with_explanation.result, opts, context),
+    { "Edited `README.md`", "updated renderer documentation" })
 end
 
 T["tool call renderers"] = MiniTest.new_set()
