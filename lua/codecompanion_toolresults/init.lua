@@ -271,11 +271,16 @@ local function navigate_tool_reference(chat_state, direction)
 end
 
 ---Create renderer dependencies for result display and clear actions.
----@return table
-local function make_renderer_context()
+---Bind current tool-call lookup to the originating chat, not Neovim's focused buffer.
+---@param chat_state CodeCompanionToolresults.ChatState Originating chat state for this render.
+---@return CodeCompanionToolresults.RendererContext
+local function make_renderer_context(chat_state)
   return {
     remove_run_command_prefix = adapter.remove_run_command_prefix,
     normalize_result = adapter.normalize_result,
+    find_tool_call = function(call_id)
+      return adapter.find_tool_call(chat_state.messages, call_id)
+    end,
     clear_result = function(current_state, call_id, on_done)
       reconcile_messages(current_state)
       redaction.start(current_state, call_id, adapter, nil, on_done)
@@ -302,7 +307,7 @@ local function refresh_managed_float(chat_state)
     return
   end
 
-  display.show(chat_state, chat_state.references[index], index, M._opts, adapter, ui, reconcile_messages, make_renderer_context(), float.view)
+  display.show(chat_state, chat_state.references[index], index, M._opts, adapter, ui, reconcile_messages, make_renderer_context(chat_state), float.view)
 end
 
 ---Display a tool result selected by cursor position or call ID.
@@ -350,7 +355,7 @@ local function display_tool_reference(chat_state, hovered_call_id)
 
   assert(index, "toolreference lookup returned no index")
   -- Resolve and render the current result through the display module.
-  display.show(chat_state, reference, index, M._opts, adapter, ui, reconcile_messages, make_renderer_context())
+  display.show(chat_state, reference, index, M._opts, adapter, ui, reconcile_messages, make_renderer_context(chat_state))
 end
 
 ---Show the hovered tool result in a transient preview without focusing it.
@@ -373,7 +378,7 @@ local function preview_tool_reference(chat_state, mouse)
     return
   end
 
-  local lines = require("codecompanion_toolresults.renderers").render(reference, result, M._opts, make_renderer_context())
+  local lines = require("codecompanion_toolresults.renderers").render(reference, result, M._opts, make_renderer_context(chat_state))
   local keybind = M._opts.keymaps.chat.show
   chat_state.hovered_call_id = reference.call_id
   hover.show(chat_state, lines, mouse, M._opts.hover, reference.name, keybind, function()

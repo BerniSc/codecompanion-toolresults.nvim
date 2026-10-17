@@ -218,6 +218,64 @@ local function render_get_diagnostics(reference, content, opts, context)
   return split_lines(content)
 end
 
+---Render insert_edit_into_file's summary followed by unified diffs of supplied edit snippets.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
+---@param content string Normalized result content.
+---@param opts table Extension options.
+---@param context CodeCompanionToolresults.RendererContext Renderer dependencies.
+---@return string[]
+local function render_insert_edit_into_file(reference, content, opts, context)
+  local lines = split_lines(content)
+  local call = context.find_tool_call and context.find_tool_call(reference.call_id)
+  local arguments = call and call.arguments
+  local edits = type(arguments) == "table" and arguments.edits or nil
+  -- Could not look up required data, return to fallback.
+  if type(edits) ~= "table" then
+    return lines
+  end
+
+  local filepath = type(arguments.filepath) == "string" and arguments.filepath or "file"
+  local old_path = filepath:sub(1, 1) == "/" and ("a" .. filepath) or ("a/" .. filepath)
+  local new_path = filepath:sub(1, 1) == "/" and ("b" .. filepath) or ("b/" .. filepath)
+  local patches = {}
+  for _, edit in ipairs(edits) do
+    if type(edit) == "table" and type(edit.oldText) == "string" and type(edit.newText) == "string" then
+      -- Tool arguments contain changed snippets, not full file contents; label each snippet patch accordingly.
+      local old_text = edit.oldText
+      local new_text = edit.newText
+      if old_text ~= "" and old_text:sub(-1) ~= "\n" then
+        old_text = old_text .. "\n"
+      end
+      if new_text ~= "" and new_text:sub(-1) ~= "\n" then
+        new_text = new_text .. "\n"
+      end
+      local diff = vim.text.diff(old_text, new_text, { result_type = "unified", ctxlen = 3 })
+      if diff ~= "" then
+        patches[#patches + 1] = diff
+      end
+    end
+  end
+
+  if #patches == 0 then
+    return lines
+  end
+
+  local patch_lines = {}
+  for _, patch in ipairs(patches) do
+    patch_lines[#patch_lines + 1] = "--- " .. old_path
+    patch_lines[#patch_lines + 1] = "+++ " .. new_path
+    -- vim.diff supplies hunk ranges and +/-/context lines. Keep those, with file headers above.
+    local diff_lines = split_lines(patch)
+    if diff_lines[#diff_lines] == "" then
+      table.remove(diff_lines)
+    end
+    vim.list_extend(patch_lines, diff_lines)
+  end
+  lines[#lines + 1] = ""
+  vim.list_extend(lines, split_lines(format_codeblock(table.concat(patch_lines, "\n"), "diff")))
+  return lines
+end
+
 ---@type table<string, CodeCompanionToolresults.Renderer>
 local registry = {
   run_command = render_run_command,
@@ -225,6 +283,7 @@ local registry = {
   grep_search = render_grep_search,
   read_file = render_read_file,
   get_diagnostics = render_get_diagnostics,
+  insert_edit_into_file = render_insert_edit_into_file,
 }
 
 ---Render one tool result using a tool-specific renderer or fallback behavior.
