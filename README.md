@@ -77,6 +77,8 @@ extensions = {
 },
 ````
 
+For a concise Neovim reference, see `:help codecompanion-toolresults`.
+
 ## Current scope
 
 The extension lets you inspect and navigate current tool results in a per-chat floating window. It reads CodeCompanion's current messages rather than keeping its own output history. Results changed or removed by context management are therefore changed or unavailable here too.

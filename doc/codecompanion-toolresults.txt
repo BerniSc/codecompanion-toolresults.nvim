@@ -1,0 +1,144 @@
+*codecompanion-toolresults.txt*  Inspect CodeCompanion tool results
+
+                       *codecompanion-toolresults*
+CodeCompanion Tool Results keeps tool output out of the chat while letting you
+inspect current results in a managed floating window. It reads CodeCompanion's
+current messages and does not keep a separate copy of tool output.
+
+This plugin is built and tested mainly around CodeCompanion v19, Neovim 0.12,
+and CodeCompanion's HTTP adapters. Behaviour with other versions and workflows
+has not been verified.
+
+=============================================================================
+SETUP                                             *codecompanion-toolresults-setup*
+
+Enable the extension in your CodeCompanion configuration:
+
+>lua
+  require("codecompanion").setup({
+    extensions = {
+      toolresults = {
+        enabled = true,
+      },
+    },
+  })
+<
+
+Defaults work without further configuration. To customise options, add an
+`opts` table inside `extensions.toolresults`.
+
+=============================================================================
+USAGE                                             *codecompanion-toolresults-usage*
+
+In a CodeCompanion chat, place the cursor on a rendered tool-call line and
+press `gT` to open its result. By default, the cursor must be on the tool-call
+line. Use `gtn` and `gtp` to jump between tool calls in the chat.
+
+The result float shows one result at a time. Its title includes the tool name
+and its position in the available results.
+
+Default mappings:
+
+  Chat buffer ~
+    gT          Open the result for the tool call under the cursor.
+    gtn         Move to the next tool call.
+    gtp         Move to the previous tool call.
+
+  Result float ~
+    <Tab>       Show the next result.
+    <S-Tab>     Show the previous result.
+    K           Toggle between the tool call and its result.
+    r           Clear the selected result from future local chat context.
+    gT          Close the float and return to the tool-call line.
+    q, <Esc>    Close the float.
+
+Float navigation wraps at the ends of the result list. Closing the float does
+not discard the selected view for that chat. Closing the chat discards it.
+
+The optional mouse preview is disabled by default. Enable `hover.enabled` and
+set Neovim's global `vim.o.mousemoveevent = true` to use it. This plugin does
+not change that global option.
+
+=============================================================================
+OPTIONS                                           *codecompanion-toolresults-options*
+
+Options are set in `extensions.toolresults.opts` within
+`require("codecompanion").setup()`.
+
+  cursor.mode             "exact" (default) requires the cursor on a tool
+                          label. "nearest" selects the closest label and
+                          prefers the one above on ties. "above" and "below"
+                          select the closest label strictly in that direction.
+  hover.enabled           false (default). Enable mouse hover previews.
+  hover.delay             500 milliseconds (default).
+  hover.max_lines         12 (default). Maximum preview lines.
+  hover.max_width         80 (default). Maximum preview width in columns.
+  keymaps.chat.show       "gT" (default). Set to false to disable.
+  keymaps.chat.next       "gtn" (default). Set to false to disable.
+  keymaps.chat.previous   "gtp" (default). Set to false to disable.
+  keymaps.float.toggle_view
+                          "K" (default). Set to false to disable.
+  keymaps.float.clear_result
+                          "r" (default). Set to false to disable.
+  keymaps.float.next      "<Tab>" (default). Set to false to disable.
+  keymaps.float.previous  "<S-Tab>" (default). Set to false to disable.
+  keymaps.float.close     "q" (default). Set to false to disable.
+  keymaps.float.escape    "<Esc>" (default). Set to false to disable.
+  keymaps.float.return_to_chat
+                          "gT" (default). Set to false to disable.
+  float.show_keymaps      true (default). Show float mappings in the winbar.
+  run_command_language    "bash" (default). Display label for run_command
+                          snippets; false disables the result code fence.
+
+For example, change the cursor selection mode and disable the winbar:
+
+>lua
+  require("codecompanion").setup({
+    extensions = {
+      toolresults = {
+        enabled = true,
+        opts = {
+          cursor = { mode = "nearest" },
+          float = { show_keymaps = false },
+        },
+      },
+    },
+  })
+<
+
+=============================================================================
+RESULTS AND CONTEXT                                 *codecompanion-toolresults-context*
+
+The float displays results that are still present in CodeCompanion's current
+messages. If context management changes or removes a result, the float shows
+its current content or reports that it is unavailable. The plugin does not
+preserve removed output.
+
+Press `r` in the result float to remove the selected result from future local
+chat context. This requires confirmation and is available only after the
+current request and tool batch finish. The action is irreversible in this
+plugin: it replaces the selected tool message's content, and the original
+output is not retained for undo. It does not redact copies in other messages,
+change past requests, or guarantee removal from provider-managed context.
+The session-restore behaviour of the cleared-state marker has not been
+integration-tested, so the clear action may be offered again after restoring a
+session.
+
+=============================================================================
+DIAGNOSTICS                                       *codecompanion-toolresults-diagnostics*
+
+For runtime issues, call the diagnostic dump from inside Neovim:
+
+>lua
+  print(require("codecompanion").extensions.toolresults.dump())
+<
+
+The function writes diagnostic files to a unique temporary directory and
+returns its path. The files include message content, which may be sensitive.
+Inspect them before sharing.
+
+Report issues with your CodeCompanion and Neovim versions and, where possible,
+a minimal reproduction.
+
+=============================================================================
+ vim:tw=78:ts=2:ft=help:norl:
