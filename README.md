@@ -12,7 +12,7 @@ Inside the result float, use `<Tab>` and `<S-Tab>` to browse results, or press `
 
 ## Demo
 
-https://github.com/user-attachments/assets/464935d3-c149-401c-8439-28025183f4f4
+https://github.com/user-attachments/assets/44e57528-a82c-41dc-b91d-94be22062c73
 
 ## Installation
 
@@ -86,7 +86,7 @@ Features:
 - Result position in the float title.
 - Safe float recreation after manual close.
 - Renderer registry with fallback rendering.
-- Tool-specific renderers for common file, search, command, and diagnostic results.
+- Tool-specific renderers for common file, search, command, diagnostic, and edit results.
 
 ## Usage
 
@@ -215,6 +215,7 @@ CodeCompanion may edit or compact older tool results. If a result is still prese
 
 The extension does not preserve removed output.
 
+`insert_edit_into_file` results retain CodeCompanion's summary and append a unified-style patch derived from the current tool call's `oldText` and `newText` snippets. The patch shows the supplied changed text, not surrounding file context, because the tool arguments do not include a full before/after file snapshot. If call arguments are unavailable, the summary remains visible without a patch.
 
 ## Architecture
 
