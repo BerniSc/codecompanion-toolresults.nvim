@@ -17,11 +17,15 @@ local context = {
   normalize_result = message_adapter.normalize_result,
 }
 
-local function edit_context(arguments)
+---@param arguments table
+---@param name? string
+---@param call_id? string
+local function edit_context(arguments, name, call_id)
+  call_id = call_id or "call-edit-success"
   return vim.tbl_extend("force", vim.deepcopy(context), {
-    find_tool_call = function(call_id)
-      if call_id == "call-edit-success" then
-        return { call_id = call_id, name = "insert_edit_into_file", arguments = arguments }
+    find_tool_call = function(found_call_id)
+      if found_call_id == call_id then
+        return { call_id = found_call_id, name = name or "insert_edit_into_file", arguments = arguments }
       end
     end,
   })
@@ -82,6 +86,48 @@ end
 T["tool renderers"]["preserves diagnostics report"] = function()
   MiniTest.expect.equality(renderers.render(fixtures.get_diagnostics.diagnostics.reference, fixtures.get_diagnostics.diagnostics.result, opts, context),
     { "Diagnostics for `lua/example.lua` (2 found):", "1:1 ERROR lua-language-server undefined global `vim`", "4:5 WARNING lua-language-server unused local `value`", "", "Code:", "1: local value = vim.api.nvim_get_current_buf()", "4: return value" })
+end
+
+T["tool renderers"]["renders edit_file summary followed by argument-derived replacement patch"] = function()
+  MiniTest.expect.equality(renderers.render({ name = "edit_file", call_id = "call-v20-edit" },
+    { content = "Edited `src/example.lua`" }, opts, edit_context({
+      filepath = "src/example.lua",
+      old_string = "local answer = 1",
+      new_string = "local answer = 42",
+    }, "edit_file", "call-v20-edit")), {
+    "Edited `src/example.lua`",
+    "",
+    "````diff",
+    "--- a/src/example.lua",
+    "+++ b/src/example.lua",
+    "@@ -1 +1 @@",
+    "-local answer = 1",
+    "+local answer = 42",
+    "````",
+  })
+end
+
+T["tool renderers"]["renders create_file summary followed by full added-file patch"] = function()
+  MiniTest.expect.equality(renderers.render({ name = "create_file", call_id = "call-v20-create" },
+    { content = "Created `src/new.lua`" }, opts, edit_context({
+      filepath = "src/new.lua",
+      content = "local answer = 42\nprint(answer)",
+    }, "create_file", "call-v20-create")), {
+    "Created `src/new.lua`",
+    "",
+    "````diff",
+    "--- /dev/null",
+    "+++ b/src/new.lua",
+    "@@ -0,0 +1,2 @@",
+    "+local answer = 42",
+    "+print(answer)",
+    "````",
+  })
+end
+
+T["tool renderers"]["keeps edit_file summary when call arguments are unavailable"] = function()
+  MiniTest.expect.equality(renderers.render({ name = "edit_file", call_id = "missing" },
+    { content = "Edited `src/example.lua`" }, opts, context), { "Edited `src/example.lua`" })
 end
 
 T["tool renderers"]["renders insert_edit_into_file summary followed by a patch"] = function()
