@@ -218,6 +218,82 @@ local function render_get_diagnostics(reference, content, opts, context)
   return split_lines(content)
 end
 
+---Build a labeled unified patch from tool arguments, without implying unavailable file context.
+---@param filepath string File path supplied to the tool.
+---@param old_text string Previous text supplied to the tool.
+---@param new_text string Replacement text supplied to the tool.
+---@param old_path? string Override old-file header (for new files).
+---@return string[] Patch lines, or empty list when there is no change.
+local function argument_patch(filepath, old_text, new_text, old_path)
+  if old_text ~= "" and old_text:sub(-1) ~= "\n" then
+    old_text = old_text .. "\n"
+  end
+  if new_text ~= "" and new_text:sub(-1) ~= "\n" then
+    new_text = new_text .. "\n"
+  end
+
+  local diff = vim.text.diff(old_text, new_text, { result_type = "unified", ctxlen = 3 })
+  if type(diff) ~= "string" or diff == "" then
+    return {}
+  end
+
+  local a_path = old_path or (filepath:sub(1, 1) == "/" and ("a" .. filepath) or ("a/" .. filepath))
+  local b_path = filepath:sub(1, 1) == "/" and ("b" .. filepath) or ("b/" .. filepath)
+  local patch_lines = { "--- " .. a_path, "+++ " .. b_path }
+  local diff_lines = split_lines(diff)
+  if diff_lines[#diff_lines] == "" then
+    table.remove(diff_lines)
+  end
+  vim.list_extend(patch_lines, diff_lines)
+  return split_lines(format_codeblock(table.concat(patch_lines, "\n"), "diff"))
+end
+
+---Render `edit_file` summary and an argument-derived replacement patch.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
+---@param content string Normalized result content.
+---@param opts table Extension options.
+---@param context CodeCompanionToolresults.RendererContext Renderer dependencies.
+---@return string[]
+local function render_edit_file(reference, content, opts, context)
+  local lines = split_lines(content)
+  local call = context.find_tool_call and context.find_tool_call(reference.call_id)
+  local arguments = call and call.arguments
+  if type(arguments) ~= "table" or type(arguments.filepath) ~= "string"
+    or type(arguments.old_string) ~= "string" or type(arguments.new_string) ~= "string"
+  then
+    return lines
+  end
+
+  local patch = argument_patch(arguments.filepath, arguments.old_string, arguments.new_string)
+  if #patch > 0 then
+    lines[#lines + 1] = ""
+    vim.list_extend(lines, patch)
+  end
+  return lines
+end
+
+---Render `create_file` summary and a patch containing supplied new-file contents.
+---@param reference CodeCompanionToolresults.ToolReference Tool reference.
+---@param content string Normalized result content.
+---@param opts table Extension options.
+---@param context CodeCompanionToolresults.RendererContext Renderer dependencies.
+---@return string[]
+local function render_create_file(reference, content, opts, context)
+  local lines = split_lines(content)
+  local call = context.find_tool_call and context.find_tool_call(reference.call_id)
+  local arguments = call and call.arguments
+  if type(arguments) ~= "table" or type(arguments.filepath) ~= "string" or type(arguments.content) ~= "string" then
+    return lines
+  end
+
+  local patch = argument_patch(arguments.filepath, "", arguments.content, "/dev/null")
+  if #patch > 0 then
+    lines[#lines + 1] = ""
+    vim.list_extend(lines, patch)
+  end
+  return lines
+end
+
 ---Render insert_edit_into_file's summary followed by unified diffs of supplied edit snippets.
 ---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param content string Normalized result content.
@@ -284,6 +360,8 @@ local registry = {
   read_file = render_read_file,
   get_diagnostics = render_get_diagnostics,
   insert_edit_into_file = render_insert_edit_into_file,
+  edit_file = render_edit_file,
+  create_file = render_create_file,
 }
 
 ---Render one tool result using a tool-specific renderer or fallback behavior.

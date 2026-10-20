@@ -5,7 +5,7 @@ CodeCompanion Tool Results keeps tool output out of the chat while letting you
 inspect current results in a managed floating window. It reads CodeCompanion's
 current messages and does not keep a separate copy of tool output.
 
-This plugin is built and tested mainly around CodeCompanion v19, Neovim 0.12,
+This plugin is built and tested mainly around CodeCompanion v19 and v20, Neovim 0.12,
 and CodeCompanion's HTTP adapters. Behaviour with other versions and workflows
 has not been verified.
 
