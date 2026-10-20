@@ -19,7 +19,7 @@ https://github.com/user-attachments/assets/44e57528-a82c-41dc-b91d-94be22062c73
 
 ## Compatibility and feedback
 
-This plugin is built and tested mainly around my workflow: CodeCompanion v19, Neovim 0.12, and CodeCompanion's HTTP adapters.
+This plugin is built and tested mainly around CodeCompanion v19 and v20, Neovim 0.12, and CodeCompanion's HTTP adapters.
 I have not verified how it behaves with other versions or workflows.
 If you try it with a different setup, I’d be glad to hear how it goes.
 A GitHub star is a helpful signal that others find the plugin useful.
@@ -227,7 +227,11 @@ CodeCompanion may edit or compact older tool results. If a result is still prese
 
 The extension does not preserve removed output.
 
-`insert_edit_into_file` results retain CodeCompanion's summary and append a unified-style patch derived from the current tool call's `oldText` and `newText` snippets. The patch shows the supplied changed text, not surrounding file context, because the tool arguments do not include a full before/after file snapshot. If call arguments are unavailable, the summary remains visible without a patch.
+`insert_edit_into_file` and v20 `edit_file` both accept `filepath` and a replace-all flag (`replaceAll` per old edit; `replace_all` on v20 call).
+The older API supports multiple edits per call and flexible matching; v20 supports one exact-string replacement per call, with line-ending and curly-quote normalisation.
+Both renderers show argument-derived patches, not CodeCompanion's full-file review diff.
+The `create_file` renderer shows proposed `content` as an added-file patch.
+
 
 ## Architecture
 

@@ -95,7 +95,11 @@ lua/codecompanion_toolresults/adapters/ui.lua
 The `init.lua` orchestrator resolves a hovered label to its current result by `call_id`, invokes the renderer, and passes the resulting lines to `hover.lua`.
 The hover module owns mouse handling and transient preview windows; it does not retain tool output as plugin history.
 Renderers only convert result data to display lines and do not manage hover state or floats.
-The `insert_edit_into_file` renderer additionally receives the current matching call arguments and displays unified-style diffs for supplied `oldText`/`newText` snippets beneath the result summary. This is a snippet diff, not a full-file diff; arguments are resolved transiently by `call_id` and are not cached.
+The old `insert_edit_into_file` API takes `filepath` and an `edits` array of `oldText`/`newText` pairs, each with a `replaceAll` flag; it supports multiple edits per call and flexible matching.
+The v20 `edit_file` API takes one `old_string`/`new_string` replacement per call, with `filepath` and `replace_all`, and uses exact-string matching with line-ending and curly-quote normalisation.
+Both tools review full-file changes, but stored tool arguments do not include the review diff; renderers show patches derived from arguments instead.
+The v20 `create_file` renderer displays supplied `content` as an added-file patch.
+All renderers resolve arguments transiently by `call_id`; when unavailable, they show only the result summary.
 
 The `_extensions` module stays thin. The plugin namespace contains feature logic. CodeCompanion-specific assumptions stay under `adapters/` where possible.
 
@@ -248,15 +252,9 @@ Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanio
 - Configurable next/previous navigation with `gtn` and `gtp`.
 - CodeCompanion-styled result float.
 - Renderer registry with fallback rendering and dedicated `run_command` rendering.
+- Tool-specific renderers for common file, search, command, diagnostic, and edit results, including legacy `insert_edit_into_file` and v20 `edit_file`/`create_file`.
 - On-demand tool-call argument view with `K`, resolved by `call_id` and retained across navigation.
 - Runtime diagnostic dumps are available through `codecompanion.extensions.toolresults.dump()` and include current messages, references, tool indexes, and rendered chat-buffer content per tracked chat.
-
-
-### Next: tool-specific renderers
-
-1. Add renderers for `read_file`, `grep_search`, `search_grep`, and `insert_edit_into_file`.
-2. Preserve current output while adding each renderer.
-3. Investigate CodeCompanion's diff UI for edit tools.
 
 ### Later work
 
@@ -266,8 +264,7 @@ Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanio
 4. Refresh positions after relevant buffer changes, not only checkpoints.
 5. Switch to better tool detection and extmark-based referencing for automatic tracking in the buffer.
 6. Improve float sizing and window options.
-7. Document supported CodeCompanion versions.
-8. Harden the opt-in mouse hover preview: verify behaviour across terminal UIs, scrolling, narrow windows, mouse focus transitions, and configured keymaps.
+7. Harden the opt-in mouse hover preview: verify behaviour across terminal UIs, scrolling, narrow windows, mouse focus transitions, and configured keymaps.
 
 ### Optional later work
 
