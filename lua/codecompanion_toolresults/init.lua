@@ -1,6 +1,7 @@
 local M = {}
 
 local adapter = require("codecompanion_toolresults.adapters.messages")
+local position_adapter = require("codecompanion_toolresults.adapters.positions")
 local diagnostics = require("codecompanion_toolresults.diagnostics")
 local ui = require("codecompanion_toolresults.adapters.ui")
 
@@ -120,20 +121,21 @@ end
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@return nil
 local function refresh_positions(chat_state)
-  local lines_by_call_id, diagnostics = position.find_tool_lines(chat_state.bufnr, chat_state.references)
+  local lines_by_call_id, position_diagnostics = position_adapter.find_tool_lines(
+    chat_state.bufnr, chat_state.references, chat_state.chat)
 
   for call_id, reference in pairs(chat_state.tools) do
     reference.line = lines_by_call_id[call_id]
   end
 
   -- do not proceed in case of error
-  if diagnostics.invalid_buffer then
+  if position_diagnostics.invalid_buffer then
     return
   end
 
-  if #diagnostics.unresolved > 0 or diagnostics.ambiguous > 0 then
+  if #position_diagnostics.unresolved > 0 or position_diagnostics.ambiguous > 0 then
     notify(string.format("tool positions unresolved: %d missing, %d ambiguous; refusing unsafe lookup",
-      #diagnostics.unresolved, diagnostics.ambiguous), vim.log.levels.WARN)
+      #position_diagnostics.unresolved, position_diagnostics.ambiguous), vim.log.levels.WARN)
   end
 end
 
