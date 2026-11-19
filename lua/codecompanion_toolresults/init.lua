@@ -9,6 +9,10 @@ local position = require("codecompanion_toolresults.position")
 local display = require("codecompanion_toolresults.display")
 local redaction = require("codecompanion_toolresults.redaction")
 local hover = require("codecompanion_toolresults.hover")
+local overview = require("codecompanion_toolresults.overview")
+local overview_model = require("codecompanion_toolresults.overview_model")
+local renderers = require("codecompanion_toolresults.renderers")
+local transient_preview = require("codecompanion_toolresults.transient_preview")
 
 ---@type table<integer, CodeCompanionToolresults.ChatState>
 local state_by_bufnr = {}
@@ -40,6 +44,7 @@ local defaults = {
       show = "gT",
       next = "gtn",
       previous = "gtp",
+      overview = "gO",
     },
     float = {
       next = "<Tab>",
@@ -50,9 +55,23 @@ local defaults = {
       escape = "<Esc>",
       return_to_chat = "gT",
     },
+    overview = {
+      inspect = "<CR>",
+      preview = "K",
+      group = "<M-g>",
+      return_to_chat = "gT",
+      close = "q",
+      escape = "<Esc>",
+    },
   },
   float = {
     show_keymaps = true,
+  },
+  -- group_picker: optional function(choices, on_choice) replacing the default vim.ui.select grouping picker.
+  -- filetype: buffer filetype for the overview. The default is plain text because summaries are raw commands or
+  -- paths; "codecompanion" enables Markdown rendering, which styles characters such as `*`, `~`, and `_`.
+  overview = {
+    filetype = "codecompanion-toolresults-overview",
   },
   cursor = {
     mode = "exact",
@@ -272,6 +291,9 @@ local function navigate_tool_reference(chat_state, direction)
   vim.api.nvim_win_set_cursor(0, { scroll_target.line, 0 })
 end
 
+-- Assigned in the Overview section; renderer dependencies need it to return from a result float.
+local open_overview
+
 ---Create renderer dependencies for result display and clear actions.
 ---Bind current tool-call lookup to the originating chat, not Neovim's focused buffer.
 ---@param chat_state CodeCompanionToolresults.ChatState Originating chat state for this render.
@@ -282,6 +304,9 @@ local function make_renderer_context(chat_state)
     normalize_result = adapter.normalize_result,
     find_tool_call = function(call_id)
       return adapter.find_tool_call(chat_state.messages, call_id)
+    end,
+    open_overview = function(current_state)
+      open_overview(current_state)
     end,
     clear_result = function(current_state, call_id, on_done)
       reconcile_messages(current_state)
@@ -309,7 +334,8 @@ local function refresh_managed_float(chat_state)
     return
   end
 
-  display.show(chat_state, chat_state.references[index], index, M._opts, adapter, ui, reconcile_messages, make_renderer_context(chat_state), float.view)
+  display.show(chat_state, chat_state.references[index], index, M._opts, adapter, ui, reconcile_messages,
+    make_renderer_context(chat_state), float.view, float.return_to_overview)
 end
 
 ---Display a tool result selected by cursor position or call ID.
@@ -395,6 +421,114 @@ end
 --- --------------------
 
 --- --------------------
+--- Overview
+--- --------------------
+
+---Close the chat's overview preview, if one is open.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
+local function close_overview_preview(chat_state)
+  transient_preview.close(chat_state.overview_preview)
+  chat_state.overview_preview = nil
+end
+
+---Close the chat's overview and its preview. Safe when no overview is open.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
+local function close_overview(chat_state)
+  close_overview_preview(chat_state)
+  overview.close(chat_state.overview)
+  chat_state.overview = nil
+end
+
+---Open the managed result float for a call. Closing that float reopens the overview.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
+---@param call_id string Stable tool call identifier.
+local function inspect_call(chat_state, call_id)
+  reconcile_messages(chat_state)
+  local reference, index
+  for reference_index, candidate in ipairs(chat_state.references) do
+    if candidate.call_id == call_id then
+      reference, index = candidate, reference_index
+      break
+    end
+  end
+  if not reference then
+    vim.notify("Tool result unavailable: no result for this call in the current chat.", vim.log.levels.WARN)
+    return
+  end
+
+  display.show(chat_state, reference, index, M._opts, adapter, ui, reconcile_messages,
+    make_renderer_context(chat_state), nil, true)
+end
+
+---Show a transient preview of a call's result beside the overview row.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
+---@param call_id string Stable tool call identifier.
+---@param anchor { screenrow: integer, screencol: integer } Anchor in editor-grid coordinates.
+local function preview_call(chat_state, call_id, anchor)
+  close_overview_preview(chat_state)
+  reconcile_messages(chat_state)
+
+  local reference = chat_state.tools[call_id]
+  local result = adapter.find_tool_result(chat_state.messages, call_id)
+  if not reference or not result then
+    vim.notify("Tool result unavailable: no result for this call in the current chat.", vim.log.levels.WARN)
+    return
+  end
+
+  local lines = renderers.render(reference, result, M._opts, make_renderer_context(chat_state))
+  chat_state.overview_preview = transient_preview.open(lines, anchor, {
+    max_lines = M._opts.hover.max_lines,
+    max_width = M._opts.hover.max_width,
+    title = reference.name,
+    keybind = M._opts.keymaps.overview.inspect,
+    on_view_more = function()
+      close_overview(chat_state)
+      inspect_call(chat_state, call_id)
+    end,
+    focusable = true,
+    zindex = 60,
+  })
+end
+
+---Open the tool overview for a chat. Items come from current messages on every open.
+---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
+open_overview = function(chat_state)
+  close_overview(chat_state)
+  chat_state.messages = chat_state.chat.messages or chat_state.messages
+  reconcile_messages(chat_state)
+  chat_state.overview_state = chat_state.overview_state or {}
+
+  chat_state.overview = overview.open({
+    items = adapter.overview_items(chat_state.messages, overview_model.summary),
+    state = chat_state.overview_state,
+    ui = ui,
+    keymaps = M._opts.keymaps.overview,
+    filetype = M._opts.overview.filetype,
+    group_picker = M._opts.overview.group_picker,
+    callbacks = {
+      inspect = function(call_id)
+        close_overview(chat_state)
+        inspect_call(chat_state, call_id)
+      end,
+      preview = function(call_id, anchor)
+        preview_call(chat_state, call_id, anchor)
+      end,
+      close_preview = function()
+        close_overview_preview(chat_state)
+      end,
+      return_to_chat = function(call_id)
+        close_overview(chat_state)
+        display.return_to_chat(chat_state, call_id, reconcile_messages, function() end)
+      end,
+    },
+  })
+end
+
+--- --------------------
+--- /Overview
+--- --------------------
+
+--- --------------------
 --- Callbacks
 --- --------------------
 
@@ -419,6 +553,9 @@ local function attach_to_chat(chat, bufnr)
     hover_timer = nil,
     hover_mouse = nil,
     hovered_call_id = nil,
+    overview = nil,
+    overview_preview = nil,
+    overview_state = {},
   }
 
   state_by_bufnr[bufnr] = chat_state
@@ -485,6 +622,7 @@ local function attach_to_chat(chat, bufnr)
     if cleanup_hover then
       cleanup_hover()
     end
+    close_overview(chat_state)
     if chat_state.float then
       ui.close_float(chat_state.float.bufnr, chat_state.float.winnr)
       chat_state.float = nil
@@ -538,6 +676,10 @@ function M.setup(opts)
   M._opts = vim.tbl_deep_extend("force", defaults, opts or {})
   assert(valid_cursor_modes[M._opts.cursor.mode], 'cursor.mode must be one of "exact", "nearest", "above", or "below"')
   validate_hover_options(M._opts.hover)
+  assert(M._opts.overview.group_picker == nil or type(M._opts.overview.group_picker) == "function",
+    "overview.group_picker must be a function when set")
+  assert(type(M._opts.overview.filetype) == "string" and M._opts.overview.filetype ~= "",
+    "overview.filetype must be a non-empty string")
   configured = true
 
   -- base keymaps
@@ -559,6 +701,21 @@ function M.setup(opts)
           -- Close any preview; hover.close is safe when no preview is open.
           hover.close(current_state)
           current_state.hovered_call_id = nil
+        else
+          vim.notify("No tracked CodeCompanion chat", vim.log.levels.INFO)
+        end
+      end,
+    }
+  end
+
+  if M._opts.keymaps.chat.overview then
+    chat_keymaps.display_overview = {
+      modes = { n = M._opts.keymaps.chat.overview },
+      description = "Open tool overview",
+      callback = function()
+        local current_state = state_by_bufnr[vim.api.nvim_get_current_buf()]
+        if current_state then
+          open_overview(current_state)
         else
           vim.notify("No tracked CodeCompanion chat", vim.log.levels.INFO)
         end

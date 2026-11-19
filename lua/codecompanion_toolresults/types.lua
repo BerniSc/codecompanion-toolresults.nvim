@@ -53,6 +53,7 @@
 ---@field winnr integer
 ---@field call_id string Tool-call identifier for returning to the chat location.
 ---@field view? "call"|"result"
+---@field return_to_overview? boolean Whether closing the float reopens the originating overview.
 
 ---@class CodeCompanionToolresults.ChatState
 ---@field bufnr integer
@@ -66,5 +67,8 @@
 ---@field hover_timer? any Transient mouse-hover debounce timer.
 ---@field hover_mouse? { line: integer, winid: integer } Last chat line and window under the pointer.
 ---@field hovered_call_id? string Tool selected by the active hover preview.
+---@field overview? table Open overview handle from `overview.open`.
+---@field overview_preview? table Transient preview opened from the overview.
+---@field overview_state CodeCompanionToolresults.OverviewState Grouping, selection, and folds kept across overview opens.
 
 return {}
