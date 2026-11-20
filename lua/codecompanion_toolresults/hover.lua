@@ -1,5 +1,8 @@
 local M = {}
 
+local transient_preview = require("codecompanion_toolresults.transient_preview")
+
+---Close the hover preview stored on chat state, if one exists.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@return nil
 local function close(chat_state)
@@ -10,154 +13,32 @@ local function close(chat_state)
   end
 
   chat_state.hover_preview = nil
-  if preview.footer_winnr and vim.api.nvim_win_is_valid(preview.footer_winnr) then
-    vim.api.nvim_win_close(preview.footer_winnr, true)
-  end
-  if preview.footer_bufnr and vim.api.nvim_buf_is_valid(preview.footer_bufnr) then
-    vim.api.nvim_buf_delete(preview.footer_bufnr, { force = true })
-  end
-  if vim.api.nvim_win_is_valid(preview.winnr) then
-    vim.api.nvim_win_close(preview.winnr, true)
-  end
-  if vim.api.nvim_buf_is_valid(preview.bufnr) then
-    vim.api.nvim_buf_delete(preview.bufnr, { force = true })
-  end
+  transient_preview.close(preview)
 end
 
 ---Show a small, scrollable preview beside the hovered tool label.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param lines string[] Rendered result lines.
----@param mouse table Mouse position from getmousepos().
----@param opts table Hover options.
+---@param mouse CodeCompanionToolresults.MousePosition Mouse position from getmousepos().
+---@param opts CodeCompanionToolresults.HoverOptions Hover options.
 ---@param tool_name string Tool name shown in the float border.
 ---@param keybind string|false|nil Key used to open the full managed result float; false or nil disables it.
 ---@param on_view_more fun() Callback to open the full managed result float.
 function M.show(chat_state, lines, mouse, opts, tool_name, keybind, on_view_more)
   close(chat_state)
 
-  local preview_lines = lines
-  local mouse_screen_col = mouse.screencol
-  local space_right = math.max(0, vim.o.columns - mouse_screen_col - 2)
-  local space_left = math.max(0, mouse_screen_col - 2)
-  local place_left = space_left > space_right
-  local available_width = place_left and space_left or space_right
-  local preview_width = math.max(1, math.min(opts.max_width, available_width))
-  local preview_col = place_left and math.max(0, mouse_screen_col - preview_width - 2) or mouse_screen_col
-
-  -- Keep the preview title and footer hints within their available display-cell width.
-  local function truncate(text, max_width)
-    if vim.fn.strdisplaywidth(text) <= max_width then
-      return text
-    end
-
-    local prefix = ""
-    local ellipsis_char = "…"
-    for index = 0, vim.fn.strchars(text) - 1 do
-      local character = vim.fn.strcharpart(text, index, 1)
-      if vim.fn.strdisplaywidth(prefix .. character .. ellipsis_char) > max_width then
-        break
-      end
-      prefix = prefix .. character
-    end
-    return prefix .. ellipsis_char
-  end
-
-  local title = truncate(tostring(tool_name or "Tool result"), math.max(1, preview_width - 2))
-
-  local footer_hints = {}
-  if keybind then
-    footer_hints[#footer_hints + 1] = keybind .. ": open"
-  end
-  if #lines > opts.max_lines then
-    footer_hints[#footer_hints + 1] = "↓ scroll for more"
-  end
-  local footer_height = #footer_hints > 0 and 1 or 0
-
-  -- Keep preview within configured line limit, available result lines, and screen height.
-  local height = math.min(opts.max_lines, #preview_lines + footer_height, math.max(1, vim.o.lines - 3))
-  -- Start at the pointer row, moving upwards as needed to keep the float on screen.
-  local row = math.min(mouse.screenrow, math.max(0, vim.o.lines - height - 3))
-  -- Keep the preview within the right edge, accounting for its border columns.
-  local screen_col = math.min(preview_col, math.max(0, vim.o.columns - preview_width - 2))
-  local bufnr = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, preview_lines)
-  -- Keep preview buffer temporary and wipe it when its window closes.
-  vim.bo[bufnr].buftype = "nofile"
-  vim.bo[bufnr].bufhidden = "wipe"
-  vim.bo[bufnr].modifiable = false
-
-  -- Position like mouse-position relative to editor-grid (screen coordinates).
-  local ok, winnr = pcall(vim.api.nvim_open_win, bufnr, false, {
-    relative = "editor",
-    row = row,
-    col = screen_col,
-    width = preview_width,
-    height = height,
-    style = "minimal",
-    border = "rounded",
-    title = " " .. title .. " ",
-    title_pos = "center",
+  local preview = transient_preview.open(lines, { screenrow = mouse.screenrow, screencol = mouse.screencol }, {
+    max_lines = opts.max_lines,
+    max_width = opts.max_width,
+    title = tool_name,
+    keybind = keybind,
+    on_view_more = on_view_more,
     focusable = true,
     zindex = 50,
   })
-  if not ok then
-    vim.api.nvim_buf_delete(bufnr, { force = true })
-    return
+  if preview then
+    chat_state.hover_preview = preview
   end
-
-  -- Preview contents are rendered Markdown. Use the standard Markdown filetype so
-  -- Markdown renderers and Tree-sitter resolve the correct parser directly.
-  -- Set it after opening the window so FileType handlers see a valid preview window.
-  vim.bo[bufnr].filetype = "markdown"
-  vim.wo[winnr].wrap = true
-  vim.wo[winnr].scrolloff = 0
-
-  local footer_bufnr, footer_winnr
-
-  if #footer_hints > 0 then
-    local footer_width = math.max(1, preview_width)
-    local footer = table.concat(footer_hints, "    ")
-    footer = truncate(footer, footer_width)
-    -- Right-align hints in the footer by padding to its display-cell width.
-    footer = string.rep(" ", math.max(0, footer_width - vim.fn.strdisplaywidth(footer))) .. footer
-    footer_bufnr = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_lines(footer_bufnr, 0, -1, false, { footer })
-    -- Keep preview buffer temporary and wipe it when its window closes.
-    vim.bo[footer_bufnr].buftype = "nofile"
-    vim.bo[footer_bufnr].bufhidden = "wipe"
-    vim.bo[footer_bufnr].modifiable = false
-
-    local footer_ok
-    footer_ok, footer_winnr = pcall(vim.api.nvim_open_win, footer_bufnr, false, {
-      relative = "editor",
-      row = row + height,
-      col = screen_col + 1,
-      width = footer_width,
-      height = 1,
-      style = "minimal",
-      focusable = false,
-      zindex = 51,
-    })
-    if not footer_ok then
-      vim.api.nvim_buf_delete(footer_bufnr, { force = true })
-      footer_bufnr = nil
-      footer_winnr = nil
-    else
-      -- Match footer colours to the preview title rim.
-      vim.wo[footer_winnr].winhighlight = "Normal:FloatTitle,NormalNC:FloatTitle"
-      vim.wo[footer_winnr].wrap = false
-    end
-  end
-
-  if keybind then
-    vim.keymap.set("n", keybind, on_view_more, { buffer = bufnr, silent = true, desc = "Open full tool result" })
-  end
-  chat_state.hover_preview = {
-    bufnr = bufnr,
-    winnr = winnr,
-    footer_bufnr = footer_bufnr,
-    footer_winnr = footer_winnr,
-  }
 end
 
 ---Close the active hover preview, if one exists.
@@ -183,8 +64,8 @@ end
 ---Attach per-chat mouse preview handling and return its cleanup function.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param bufnr integer Chat buffer number.
----@param opts table Hover options.
----@param on_preview fun(mouse: table) Preview callback.
+---@param opts CodeCompanionToolresults.HoverOptions Hover options.
+---@param on_preview fun(mouse: CodeCompanionToolresults.MousePosition) Preview callback.
 ---@return fun() stop Stop timer, remove mappings and autocmds, and close preview.
 function M.attach(chat_state, bufnr, opts, on_preview)
   -- Group hover autocmds per chat buffer and clear stale handlers before attaching new ones.
@@ -237,7 +118,7 @@ function M.attach(chat_state, bufnr, opts, on_preview)
         or mouse.winid == chat_state.hover_preview.footer_winnr) then
       return
     end
-    -- Stop if poiner is not over valid line in buffer.
+    -- Stop if pointer is not over valid line in buffer.
     if mouse.winid == 0 or not vim.api.nvim_win_is_valid(mouse.winid)
       or vim.api.nvim_win_get_buf(mouse.winid) ~= bufnr or mouse.line < 1 then
       stop()

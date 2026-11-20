@@ -32,6 +32,49 @@ The preview is transient and contains rendered result lines; its top border show
 The preview closes when the user enters Insert mode or moves the pointer outside the chat, but moving the pointer over the preview itself leaves it open.
 A pending or unavailable result does not open a preview or show a notification.
 
+The window and buffer lifecycle for these previews lives in `transient_preview.lua`.
+`hover.lua` keeps mouse handling, debounce, and per-chat preview state, and delegates window creation to the shared module.
+The overview's `K` preview reuses the same module with an anchor beside the selected overview row.
+
+## Tool overview
+
+`gO` opens one chronological list of the current chat's tool calls.
+Each row shows the ordinal, an outcome glyph, the tool name, and a short argument summary.
+The overview stores displayed `call_id` values only; outcome, summary, and arguments are looked up from current messages when rows are built.
+
+Outcome is classified on demand by `adapters/messages.lua` (`tool_outcome`) from the current result for a `call_id`:
+
+- `cancelled` and `rejected`: recognised CodeCompanion invalidation text.
+- `failed`: the first result line starts with `Failed ` or `Failed:` or `Error:`. This is a heuristic and can misclassify a successful result that starts with the same text.
+- `completed`: any other available result.
+- `unavailable`: no current result for the `call_id`.
+
+Rejection and cancellation take precedence over the failure marker.
+Nothing about outcome is stored in extension state.
+
+`lua/codecompanion_toolresults/overview_model.lua` is a pure module following MVC fashion.
+It builds row text, argument summaries, and groups from plain data, without windows or chat access.
+Summaries are display-only; a `run_command` command is shown flattened to one line and truncated by character.
+
+Grouping modes are flat (`none`), outcome (`outcome`, in fixed order), and tool type (`tool`, in first-appearance order).
+Group keys are plain identities, so folds and collapse state can be keyed by them rather than by parsing rendered text.
+Agent-turn grouping is not implemented because current references do not retain call-batch metadata.
+
+The overview window is implemented in `overview.lua`.
+It takes plain items, a state table owned by the chat, a UI adapter, keymaps, and callbacks.
+It never reads CodeCompanion messages.
+
+- `gO` (`keymaps.chat.overview`) opens one managed overview per chat.
+- `<CR>` opens the selected result in the managed result float; `q` and `<Esc>` in that float reopen the overview.
+- `K` previews the selected result through `transient_preview.lua`, anchored beside the row. Its full-result key is `keymaps.overview.inspect`.
+- `gT` closes the overview and returns to the tool-call line.
+- `<M-g>` opens the grouping picker. The picker is `overview.group_picker` when set, otherwise `vim.ui.select`. It receives `{ grouping, label }` choices and an `on_choice` callback; a nil choice cancels.
+- Folds are manual, one per group. Collapse state is keyed `grouping:group_key`, so a fold collapsed under one grouping does not affect another.
+- Selection, grouping, and collapse state are restored on reopen within the same chat.
+
+The overview builds its items once per open and does not refresh while open.
+Refreshing is planned; see Later work.
+
 ## Data ownership
 
 CodeCompanion owns message content.
@@ -44,6 +87,7 @@ The extension keeps per-chat state containing:
 - tool references
 - current rendered line positions
 - transient hover preview handles and debounce timer, while preview is active
+- overview handle, overview preview handle, and overview state (selected call ID, grouping, collapsed groups)
 
 A tool reference contains metadata such as `call_id`, tool name, message ID, rendered line, and status.
 
@@ -71,7 +115,16 @@ lua/codecompanion_toolresults/position.lua
   Rendered line detection and cursor lookup
 
 lua/codecompanion_toolresults/hover.lua
-  Buffer-local mouse mapping, hover debounce, transient preview windows, and cleanup
+  Buffer-local mouse mapping, hover debounce, and per-chat hover preview state
+
+lua/codecompanion_toolresults/transient_preview.lua
+  Transient scrollable preview windows: anchor placement, title and footer hints, optional full-result key, and close
+
+lua/codecompanion_toolresults/overview.lua
+  Overview window: rows, folds, grouping, selection, overview-local mappings, and callbacks; no CodeCompanion message access
+
+lua/codecompanion_toolresults/overview_model.lua
+  Pure overview row, argument summary, and grouping model; no windows or chat access
 
 lua/codecompanion_toolresults/diagnostics.lua
   On-demand runtime state and buffer diagnostic dump
@@ -85,7 +138,7 @@ lua/codecompanion_toolresults/types.lua
 ### ADAPTERS - directly reference codecompanion core logic that is not necessary set in stone
 
 lua/codecompanion_toolresults/adapters/messages.lua
-  CodeCompanion message extraction, result lookup, and guarded tool-result mutation
+  CodeCompanion message extraction, result lookup, on-demand overview outcome classification, and guarded tool-result mutation
 
 lua/codecompanion_toolresults/adapters/ui.lua
   CodeCompanion UI integration and floating-window configuration
@@ -239,6 +292,8 @@ Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanio
 - Mouse hover requires Neovim's global `mousemoveevent`; the plugin does not enable or change that option.
 - Mouse-event delivery, focus transitions, and preview placement have not been manually verified across terminal UIs.
 - `run_command` display formatting currently defaults to a `bash` command label, configurable via `run_command_language`. Still requires some unintuitive user interaction.
+- The tool overview reads messages only when it opens and does not refresh while open.
+- The overview's outcome glyph highlight shifts from index 100 onwards, because the glyph column is a fixed byte offset.
 
 ## Development stages
 
@@ -255,6 +310,7 @@ Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanio
 - Tool-specific renderers for common file, search, command, diagnostic, and edit results, including legacy `insert_edit_into_file` and v20 `edit_file`/`create_file`.
 - On-demand tool-call argument view with `K`, resolved by `call_id` and retained across navigation.
 - Runtime diagnostic dumps are available through `codecompanion.extensions.toolresults.dump()` and include current messages, references, tool indexes, and rendered chat-buffer content per tracked chat.
+- Tool overview on `gO`, with outcome classification, grouping, manual folds, `K` preview, and a configurable grouping picker.
 
 ### Later work
 
@@ -265,6 +321,12 @@ Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanio
 5. Switch to better tool detection and extmark-based referencing for automatic tracking in the buffer.
 6. Improve float sizing and window options.
 7. Harden the opt-in mouse hover preview: verify behaviour across terminal UIs, scrolling, narrow windows, mouse focus transitions, and configured keymaps.
+8. Make the tests more robust. Current hover lifecycle tests replace `vim.fn`, `vim.uv`, and `vim.keymap` functions by hand and restore them manually; a shared stub helper with guaranteed restoration would reduce the risk of leaked state. The `transient_preview` open-failure test only checks for a `nil` result and does not verify that no scratch buffer leaked.
+9. Refresh an open tool overview when results arrive or context management changes messages. Planned design: `overview.refresh(handle, items)` keeps selection, grouping, and folds, and closes the overview preview when data changes; `init.lua` calls it after scheduled reconciliation and checkpoints.
+10. Address recovery of broken sessions, for example a tool call whose result was never written or a session restored with plugin metadata missing. Design and detection rules are not decided.
+11. Show the hovered result in the mouse preview for tool outputs as well, not only for tool-call labels. Scope and mouse-event behaviour still need design.
+12. Show pending tool calls through this plugin, so calls still waiting for a result appear in the overview and can be inspected as pending. Current overview lists them only as `unavailable`.
+13. Improve stability in general. Cover error paths, stale windows and buffers, and invalid chat state with tests and diagnostics before adding new features.
 
 ### Optional later work
 
