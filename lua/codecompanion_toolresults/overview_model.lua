@@ -6,6 +6,8 @@ local M = {}
 
 M.groupings = { "none", "outcome", "tool" }
 
+-- TODO Make Modelparams from here on configurable?
+
 M.grouping_labels = {
   none = "No grouping",
   outcome = "Outcome",
@@ -35,6 +37,14 @@ local outcome_glyphs = {
 -- take priority if a tool passes several.
 local summary_keys = { "filepath", "path", "query", "search_term", "pattern", "file" }
 local max_summary_chars = 54
+
+-- Row layout shared with the overview highlighter. The glyph column is derived from this format, so change them together.
+-- Row format is " NN  <glyph>  <name padded to 17> <summary>". Index width is fixed at two digits.
+M.index_width = 2
+M.name_width = 17
+M.row_format = " %0" .. M.index_width .. "d  %s  %-" .. M.name_width .. "s %s"
+-- Byte offset of the glyph within a row: one leading space, index, then two spaces.
+M.glyph_column = 1 + M.index_width + 2
 
 ---Flatten text to one line and truncate it by characters, not bytes.
 ---@param text string
@@ -73,8 +83,7 @@ end
 ---@param item CodeCompanionToolresults.OverviewItem
 ---@return string
 function M.format_row(item)
-  return string.format(" %02d  %s  %-17s %s", item.index, outcome_glyphs[item.outcome] or "?",
-    item.name or "unknown", item.summary)
+  return string.format(M.row_format, item.index, outcome_glyphs[item.outcome] or "?", item.name or "unknown", item.summary)
 end
 
 ---Return the group key and label for one item under a grouping.
@@ -108,6 +117,7 @@ function M.group(items, grouping)
     return {}
   end
 
+  -- Bucket items by group key, keeping groups in first-seen order. Items keep their chat order within a group.
   local groups = {}
   local by_key = {}
   for _, item in ipairs(items) do
@@ -122,6 +132,8 @@ function M.group(items, grouping)
   end
 
   if grouping == "outcome" then
+    -- Outcome groups use the fixed "outcome_order", not first appearance, so the order stays stable as calls arrive.
+    -- Outcomes missing from "outcome_order" are dropped here, so add new outcomes to that list too.
     local ordered = {}
     for _, outcome in ipairs(outcome_order) do
       if by_key[outcome] then

@@ -34,8 +34,8 @@ local outcome_highlights = {
   unavailable = "CodeCompanionToolresultsOverviewUnavailable",
 }
 
--- Glyph columns are fixed by `overview_model.format_row`: " NN  <glyph>  <name>".
-local glyph_start = 5
+-- Glyph column comes from the row format in `overview_model`, so the highlighter and formatter cannot drift apart.
+local glyph_start = model.glyph_column
 
 ---Default picker: native "vim.ui.select" for grouping choices.
 ---@type CodeCompanionToolresults.GroupPicker
@@ -110,6 +110,7 @@ local function remember_collapsed(handle)
   state.collapsed = state.collapsed or {}
   vim.api.nvim_win_call(handle.winnr, function()
     for _, header in ipairs(handle.layout.headers) do
+      -- Remember per grouping and in that per grouping header (for example key="outcome:completed").
       local key = handle.grouping .. ":" .. header.key
       state.collapsed[key] = vim.fn.foldclosed(header.line) ~= -1 or nil
     end
@@ -130,16 +131,20 @@ local function apply_folds(handle)
 
   local collapsed = handle.context.state.collapsed or {}
   vim.api.nvim_win_call(winnr, function()
+    -- Clear old manual folds so rebuilding does not stack duplicates.
     vim.cmd("silent! normal! zE")
+    -- One fold per group, from its header to the line before the next header or the last line.
     for index, header in ipairs(layout.headers) do
       local next_header = layout.headers[index + 1]
       local last = next_header and (next_header.line - 1) or #layout.lines
       vim.cmd(string.format("%d,%dfold", header.line, last))
     end
+    -- Open everything, then close only the groups remembered as collapsed.
     vim.cmd("silent! normal! zR")
     for _, header in ipairs(layout.headers) do
       if collapsed[handle.grouping .. ":" .. header.key] then
         vim.api.nvim_win_set_cursor(winnr, { header.line, 0 })
+        -- silent! ignores errors when no fold exists at the cursor.
         vim.cmd("silent! normal! zc")
       end
     end
@@ -153,10 +158,10 @@ local function highlight(handle)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
+  -- Drop this module's previous highlights so stale extmarks do not pile up across re-renders.
   vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
 
   local layout = handle.layout
-  -- Extmarks replace the deprecated nvim_buf_add_highlight. Columns are 0-based byte offsets, end-exclusive.
   local header_text = layout.lines[1]
   vim.api.nvim_buf_set_extmark(bufnr, namespace, 0, 0, {
     end_col = #header_text,
@@ -253,6 +258,7 @@ local function regroup(handle, grouping)
   local selected = selected_call_id(handle)
   remember_collapsed(handle)
   local state = handle.context.state
+  -- Keep the chat-remembered grouping in step with the one now shown.
   state.grouping = grouping
   state.selected_call_id = selected or state.selected_call_id
   handle.grouping = grouping
@@ -288,6 +294,7 @@ local function install_mappings(handle)
   local context = handle.context
   local keymaps = context.keymaps
 
+  -- Shared "decorator" to add selection as param to action.
   local function with_selection(action)
     return function()
       local call_id = selected_call_id(handle)
@@ -342,6 +349,7 @@ function M.open(context)
     grouping = grouping,
     layout = layout,
   }
+  -- Remember the grouping on the chat state so the next open starts with it. The handle holds the live copy.
   context.state.grouping = grouping
   apply_folds(handle)
   highlight(handle)

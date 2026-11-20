@@ -67,10 +67,11 @@ local defaults = {
   float = {
     show_keymaps = true,
   },
-  -- group_picker: optional function(choices, on_choice) replacing the default vim.ui.select grouping picker.
+  -- group_picker: optional function(choices, on_choice) replacing the default vim.ui.select grouping picker. nil keeps vim.ui.select.
   -- filetype: buffer filetype for the overview. The default is plain text because summaries are raw commands or
   -- paths; "codecompanion" enables Markdown rendering, which styles characters such as `*`, `~`, and `_`.
   overview = {
+    group_picker = nil,
     filetype = "codecompanion-toolresults-overview",
   },
   cursor = {
@@ -336,7 +337,7 @@ local function refresh_managed_float(chat_state)
   end
 
   display.show(chat_state, chat_state.references[index], index, M._opts, adapter, ui, reconcile_messages,
-    make_renderer_context(chat_state), float.view, float.return_to_overview)
+               make_renderer_context(chat_state), float.view, float.return_to_overview)
 end
 
 ---Display a tool result selected by cursor position or call ID.
@@ -458,7 +459,7 @@ local function inspect_call(chat_state, call_id)
   end
 
   display.show(chat_state, reference, index, M._opts, adapter, ui, reconcile_messages,
-    make_renderer_context(chat_state), nil, true)
+               make_renderer_context(chat_state), nil, true)
 end
 
 ---Show a transient preview of a call's result beside the overview row.
@@ -495,6 +496,7 @@ end
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 open_overview = function(chat_state)
   close_overview(chat_state)
+  -- Fall back to the last messages seen by the callbacks if the chat has none, so reconcile never receives nil.
   chat_state.messages = chat_state.chat.messages or chat_state.messages
   reconcile_messages(chat_state)
   chat_state.overview_state = chat_state.overview_state or {}
@@ -606,7 +608,8 @@ local function attach_to_chat(chat, bufnr)
       end
       -- CodeCompanion runs context management after checkpoint callbacks return.
       -- Read messages then, so an open float sees any in-place edits and updated estimates.
-      chat_state.messages = chat.messages
+      -- Same fallback as open_overview: keep the last known messages if the chat has none.
+      chat_state.messages = chat.messages or chat_state.messages
       reconcile_messages(chat_state)
       refresh_managed_float(chat_state)
       dump_buffer(chat_state)
