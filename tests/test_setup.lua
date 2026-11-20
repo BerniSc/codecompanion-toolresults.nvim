@@ -105,4 +105,32 @@ T["setup"]["disables nested chat show mapping"] = function()
   MiniTest.expect.equality(chat_keymaps.display_toolresults, nil)
 end
 
+T["setup"]["overview uses a plain filetype by default"] = function()
+  package.loaded["codecompanion.config"] = { interactions = { chat = { keymaps = {} } } }
+
+  local toolresults = require("codecompanion_toolresults")
+  toolresults.setup()
+
+  MiniTest.expect.equality(toolresults._opts.overview.filetype, "codecompanion-toolresults-overview")
+end
+
+T["setup"]["overview filetype can opt into Markdown"] = function()
+  package.loaded["codecompanion.config"] = { interactions = { chat = { keymaps = {} } } }
+
+  local toolresults = require("codecompanion_toolresults")
+  toolresults.setup({ overview = { filetype = "codecompanion" } })
+
+  MiniTest.expect.equality(toolresults._opts.overview.filetype, "codecompanion")
+end
+
+T["setup"]["rejects an empty overview filetype"] = function()
+  package.loaded["codecompanion.config"] = { interactions = { chat = { keymaps = {} } } }
+
+  local toolresults = require("codecompanion_toolresults")
+  local ok, err = pcall(toolresults.setup, { overview = { filetype = "" } })
+
+  MiniTest.expect.equality(ok, false)
+  MiniTest.expect.equality(err:match("overview.filetype must be a non%-empty string") ~= nil, true)
+end
+
 return T

@@ -266,6 +266,80 @@ T["managed float state"]["does not clear result while call view is active"] = fu
   MiniTest.expect.equality(clear_count, 0)
 end
 
+T["managed float state"]["q reopens the overview when the float came from it"] = function()
+  local state, reference = float_state("result")
+  state.float = nil
+  local mappings = {}
+  local reopened = 0
+  local closed = 0
+  local adapter = {
+    find_tool_result = function(messages) return messages[1] end,
+  }
+  local ui = {
+    create_float = function() return 2, 3 end,
+    update_float = function() return true end,
+    close_float = function() closed = closed + 1 end,
+  }
+  local opts = vim.deepcopy(defaults)
+  opts.run_command_language = false
+
+  local original_keymap_set = vim.keymap.set
+  local original_set_cursor = vim.api.nvim_win_set_cursor
+  rawset(vim.keymap, "set", function(_, lhs, callback) mappings[lhs] = callback end)
+  rawset(vim.api, "nvim_win_set_cursor", function() end)
+  local ok, err = pcall(function()
+    display.show(state, reference, 1, opts, adapter, ui, function() end, {
+      normalize_result = function(content) return content end,
+      open_overview = function(chat_state)
+        reopened = reopened + 1
+        MiniTest.expect.equality(chat_state, state)
+      end,
+    }, "result", true)
+    mappings.q()
+  end)
+  rawset(vim.keymap, "set", original_keymap_set)
+  rawset(vim.api, "nvim_win_set_cursor", original_set_cursor)
+  if not ok then error(err) end
+
+  MiniTest.expect.equality(state.float, nil)
+  MiniTest.expect.equality(closed, 1)
+  MiniTest.expect.equality(reopened, 1)
+end
+
+T["managed float state"]["q does not reopen the overview for a plain float"] = function()
+  local state, reference = float_state("result")
+  state.float = nil
+  local mappings = {}
+  local reopened = 0
+  local adapter = {
+    find_tool_result = function(messages) return messages[1] end,
+  }
+  local ui = {
+    create_float = function() return 2, 3 end,
+    update_float = function() return true end,
+    close_float = function() end,
+  }
+  local opts = vim.deepcopy(defaults)
+  opts.run_command_language = false
+
+  local original_keymap_set = vim.keymap.set
+  local original_set_cursor = vim.api.nvim_win_set_cursor
+  rawset(vim.keymap, "set", function(_, lhs, callback) mappings[lhs] = callback end)
+  rawset(vim.api, "nvim_win_set_cursor", function() end)
+  local ok, err = pcall(function()
+    display.show(state, reference, 1, opts, adapter, ui, function() end, {
+      normalize_result = function(content) return content end,
+      open_overview = function() reopened = reopened + 1 end,
+    })
+    mappings.q()
+  end)
+  rawset(vim.keymap, "set", original_keymap_set)
+  rawset(vim.api, "nvim_win_set_cursor", original_set_cursor)
+  if not ok then error(err) end
+
+  MiniTest.expect.equality(reopened, 0)
+end
+
 T["managed float state"]["resets cursor when changing tools in reused float"] = function()
   local state = float_state("result")
   local next_reference = { call_id = "call-next", name = "grep_search" }
@@ -287,6 +361,46 @@ T["managed float state"]["resets cursor when changing tools in reused float"] = 
   vim.api.nvim_win_set_cursor = original_set_cursor
   if not ok then error(err) end
   MiniTest.expect.equality(cursor, { 1, 0 })
+end
+
+T["return to chat"] = MiniTest.new_set()
+
+T["return to chat"]["moves the cursor to the tool line in the chat window"] = function()
+  local chat_buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(chat_buf, 0, -1, false, { "one", "two", "three", "four" })
+  local chat_win = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(chat_win, chat_buf)
+
+  local float_buf = vim.api.nvim_create_buf(false, true)
+  local float_win = vim.api.nvim_open_win(float_buf, true, { relative = "editor", row = 0, col = 0, width = 10, height = 2 })
+  local state = {
+    bufnr = chat_buf,
+    tools = { ["call-3"] = { call_id = "call-3", line = 3 } },
+    references = {},
+  }
+
+  display.return_to_chat(state, "call-3", function() end, function()
+    if vim.api.nvim_win_is_valid(float_win) then vim.api.nvim_win_close(float_win, true) end
+  end)
+
+  MiniTest.expect.equality(vim.api.nvim_get_current_win(), chat_win)
+  MiniTest.expect.equality(vim.api.nvim_win_get_cursor(chat_win), { 3, 0 })
+  vim.api.nvim_buf_delete(chat_buf, { force = true })
+end
+
+T["return to chat"]["warns and closes when the tool line is unknown"] = function()
+  local notified
+  local original_notify = vim.notify
+  vim.notify = function(message) notified = message end
+  local closed = 0
+  local state = { bufnr = -1, tools = {}, references = {} }
+
+  local ok, err = pcall(display.return_to_chat, state, "call-missing", function() end, function() closed = closed + 1 end)
+  vim.notify = original_notify
+  if not ok then error(err) end
+
+  MiniTest.expect.equality(closed, 1)
+  MiniTest.expect.equality(notified, "Tool call location unavailable in the current chat.")
 end
 
 return T
