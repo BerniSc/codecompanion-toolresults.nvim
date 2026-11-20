@@ -112,19 +112,17 @@ local function index_tool_commands(messages)
 
   for _, message in ipairs(messages or {}) do
     for _, call in ipairs((message.tools and message.tools.calls) or {}) do
+      local call_id = call.call_id or call.id
       local function_call = call["function"] or {}
       local arguments = function_call.arguments
 
-      if call.id and function_call.name == "run_command" and type(arguments) == "string" then
+      if call_id and function_call.name == "run_command" and type(arguments) == "string" then
         local ok, decoded = pcall(vim.json.decode, arguments)
         arguments = ok and decoded or nil
       end
 
-      if function_call.name == "run_command" and type(arguments) == "table" and type(arguments.cmd) == "string" then
-        local call_id = call.call_id or call.id
-        if call_id then
-          cmds_by_id[call_id] = arguments.cmd
-        end
+      if call_id and function_call.name == "run_command" and type(arguments) == "table" and type(arguments.cmd) == "string" then
+        cmds_by_id[call_id] = arguments.cmd
       end
     end
   end
@@ -324,6 +322,7 @@ function M.overview_items(messages, summarise)
   local seen = {}
   for _, message in ipairs(messages or {}) do
     for _, call in ipairs((message.tools and message.tools.calls) or {}) do
+      -- Ensure we handle Responses API correctly, even if CodeCompanion should always do this as well.
       local call_id = call.call_id or call.id
       if call_id and not seen[call_id] then
         seen[call_id] = true
