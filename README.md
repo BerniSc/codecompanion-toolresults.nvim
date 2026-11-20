@@ -57,6 +57,7 @@ extensions = {
           show = "gT",
           next = "gtn",
           previous = "gtp",
+          overview = "gO",
         },
         float = {
           next = "<Tab>",
@@ -70,6 +71,10 @@ extensions = {
       },
       float = {
         show_keymaps = true,
+      },
+      overview = {
+        filetype = "codecompanion-toolresults-overview", -- Set "codecompanion" or "markdown" for Markdown rendering.
+        group_picker = nil,                              -- Optional function(choices, on_choice) for replacing vim.ui.select (see [Tool Overview](#tool-overview)).
       },
       run_command_language = "bash", -- Display command snippets as bash; change label or set false to keep raw output.
     },
@@ -99,6 +104,7 @@ Features:
 - Safe float recreation after manual close.
 - Renderer registry with fallback rendering.
 - Tool-specific renderers for common file, search, command, diagnostic, and edit results.
+- Tool overview on `gO`, with outcome glyphs, grouping, folds, and `K` preview.
 
 ## Usage
 
@@ -165,6 +171,7 @@ Navigation wraps from last result to first and from first result to last.
 It uses ordered tool references, independently of chat-buffer cursor position.
 If the float is manually closed, the next display or navigation action recreates it safely in the last selected view for that chat.
 Closing the parent chat discards that view preference and closes its managed result float.
+When the float opens from the tool overview, `q` and `<Esc>` reopen the overview instead of only closing the float.
 
 Float mappings are configurable under `keymaps.float`: `toggle_view`, `clear_result`, `next`, `previous`, `close`, `escape`, and `return_to_chat`.
 Set an option to `false` to disable its mapping.
@@ -174,6 +181,89 @@ The optional winbar displays configured float-local mappings at the top of the r
 Keymap options set to `false` are not shown.
 Set `float.show_keymaps = false` to hide the winbar while keeping keymap behaviour unchanged.
 
+
+## Tool overview
+
+The tool overview lists every tool call in the current chat in one window.
+Use it to see what the agent ran, how each call ended, and which result to open.
+
+Press `gO` in the chat to open it.
+Each row shows the call number, an outcome glyph, the tool name, and a short argument summary:
+
+````text
+ 01  ✓  read_file         lua/init.lua
+ 02  !  grep_search       needle
+````
+
+| Glyph | Outcome | Meaning |
+| --- | --- | --- |
+| `✓` | Completed | The result is available and is not a failure, rejection, or cancellation. |
+| `!` | Failed | The first result line starts with `Failed `, `Failed:`, or `Error:`. |
+| `×` | Rejected | CodeCompanion reports that you rejected the call. |
+| `-` | Cancelled | CodeCompanion reports that the call was cancelled. |
+| `?` | Unavailable | No current result exists, for example while the call runs or after context management removed it. |
+
+Rejected and cancelled take precedence over the failed marker.
+The failed marker is a heuristic, so a successful result whose first line starts with the same text shows as failed.
+
+Press `<M-g>` to group the rows:
+
+- `No grouping` lists calls in chat order.
+- `Outcome` groups calls in a fixed order, from completed to unavailable.
+- `Tool type` groups calls by tool name, in the order each tool first appears.
+
+Each group has a fold.
+Use standard Vim fold commands, such as `za`, to collapse or expand a group.
+Collapsed groups stay collapsed when you reopen the overview in the same chat with the same grouping.
+
+| Key | Action |
+| --- | --- |
+| `<CR>` | Open the selected result in the result float. |
+| `K` | Preview the selected result beside its row. Press `<CR>` in the preview to open the full result. |
+| `<M-g>` | Choose a grouping. |
+| `gT` | Close the overview and return to the tool-call line in the chat. |
+| `q`, `<Esc>` | Close the overview. |
+
+Closing the result float with `q` or `<Esc>` reopens the overview with the previous selection.
+`gT` in the result float returns to the chat line instead.
+
+The overview reads current messages when it opens.
+It does not update while open.
+If a result arrives or context management changes it, close the overview and reopen it with `gO`.
+
+The overview keeps the selected call, grouping, and folds for the chat.
+It stores no tool output.
+Closing the chat discards this state.
+
+For `run_command`, the summary is the command, flattened to one line and cut to 54 characters.
+For other tools, the summary is the first of `filepath`, `path`, `query`, `search_term`, `pattern`, or `file` that holds a string.
+
+To replace the default `vim.ui.select` picker, set `overview.group_picker`.
+The function receives `choices`, a list of `{ grouping, label }` tables, and an `on_choice` callback.
+Call `on_choice` with the chosen `grouping`, or with no argument to cancel:
+
+````lua
+overview = {
+  group_picker = function(choices, on_choice)
+    vim.ui.select(choices, {
+      prompt = "Group tool calls",
+      format_item = function(choice) return choice.label end,
+    }, function(choice)
+      on_choice(choice and choice.grouping)
+    end)
+  end,
+},
+````
+
+Set `keymaps.chat.overview` to `false` to disable `gO`.
+Set any action under `keymaps.overview` to `false` to disable that mapping.
+
+Known limitations:
+
+- The overview does not refresh while open.
+- The failed marker is a heuristic.
+- From index 100, the outcome glyph highlight can shift off the glyph. The text itself is unaffected.
+- Agent-turn grouping is not available, because the plugin does not record which calls belong to one agent turn.
 
 ## Options
 
@@ -195,6 +285,15 @@ Set `float.show_keymaps = false` to hide the winbar while keeping keymap behavio
 | `keymaps.float.escape` | `"<Esc>"` | Float-local Escape mapping. Set to `false` to disable. |
 | `keymaps.float.return_to_chat` | `"gT"` | Float-local mapping that closes result float and returns to its originating tool-call line. Set to `false` to disable. |
 | `float.show_keymaps` | `true` | Show float-local mappings in result window winbar. |
+| `overview.filetype` | `"codecompanion-toolresults-overview"` | Filetype for the tool overview buffer. The default is plain text, so characters such as `*`, `~`, and `_` in commands or paths show as typed. Set `"codecompanion"` to enable Markdown rendering in the overview. |
+| `overview.group_picker` | `nil` | Function `(choices, on_choice)` that replaces the default `vim.ui.select` grouping picker. Must be a function when set. |
+| `keymaps.chat.overview` | `"gO"` | Open the tool overview for the current chat. Set to `false` to disable. |
+| `keymaps.overview.inspect` | `"<CR>"` | Open the selected result in the result float. Set to `false` to disable. |
+| `keymaps.overview.preview` | `"K"` | Preview the selected result beside its row. Set to `false` to disable. |
+| `keymaps.overview.group` | `"<M-g>"` | Choose a grouping. Set to `false` to disable. |
+| `keymaps.overview.return_to_chat` | `"gT"` | Close the overview and return to the tool-call line. Set to `false` to disable. |
+| `keymaps.overview.close` | `"q"` | Close the overview. Set to `false` to disable. |
+| `keymaps.overview.escape` | `"<Esc>"` | Close the overview. Set to `false` to disable. |
 | `run_command_language` | `"bash"` | Language label for `run_command` result snippets. Set to another label or `false` to show result without a fence. Call-view input always uses a neutral `text` fence. |
 | `debug` | `false` | Enable lifecycle and reference logging. |
 | `debug_buffer` | `false` | Log rendered chat-buffer lines and calculated positions. |
