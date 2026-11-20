@@ -4,7 +4,7 @@ local function rejection_base(line)
   return line:gsub(', with the reason: ".*"$', "")
 end
 
----Find recognized cancellation or rejection text in a tool result.
+---Find recognized cancellation or rejection-text in a tool result by heuristic.
 ---@param content any Tool output content.
 ---@param name? string Tool name.
 ---@param command? string Parsed run_command command.
@@ -76,8 +76,8 @@ end
 
 ---Check whether a tool result starts with a recognised failure marker.
 ---
----This is a heuristic over the first output line. Only the exact `Failed` and `Error:` markers count, so
----ordinary words such as `Errors` or `Error handling` do not match.
+---This is a heuristic over the first output line. Only the exact "Failed" and "Error:" markers count, so
+---ordinary words such as "Errors" or "Error handling" do not match.
 ---@param content any Tool output content.
 ---@return boolean failed
 local function failed(content)
@@ -293,7 +293,7 @@ end
 ---cancellation take precedence over the failure heuristic.
 ---@param messages CodeCompanion.Chat.Messages Current CodeCompanion message stack.
 ---@param call_id string Tool-call identifier.
----@return "completed"|"failed"|"rejected"|"cancelled"|"unavailable" outcome
+---@return CodeCompanionToolresults.ToolOutcome outcome
 function M.tool_outcome(messages, call_id)
   local result = M.find_tool_result(messages, call_id)
   if not result then
@@ -312,12 +312,11 @@ function M.tool_outcome(messages, call_id)
 end
 
 ---Build plain overview items for the current chat, in message order.
----
 ---Each item carries the call ID, ordinal, tool name, outcome, and display-only argument summary. Items are built
 ---from current messages on every call and are not cached. Arguments are used only to derive the summary.
 ---@param messages CodeCompanion.Chat.Messages Current CodeCompanion message stack.
----@param summarise fun(command: string?, arguments: table?): string Summary builder, supplied by the overview model.
----@return { call_id: string, index: integer, name: string?, outcome: string, summary: string }[] items
+---@param summarise CodeCompanionToolresults.OverviewSummariser Summary builder, supplied by the overview model.
+---@return CodeCompanionToolresults.OverviewItem[] items
 function M.overview_items(messages, summarise)
   -- Enumerate tool calls rather than results so calls still waiting for a result appear as unavailable.
   local commands_by_id = index_tool_commands(messages)

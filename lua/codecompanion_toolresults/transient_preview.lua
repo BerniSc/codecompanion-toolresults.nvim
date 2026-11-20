@@ -38,8 +38,8 @@ local function scratch_buffer(lines)
   return bufnr
 end
 
----Close a preview returned by `open`. Safe to call with nil or with already-closed windows.
----@param preview? { winnr: integer, bufnr: integer, footer_winnr: integer?, footer_bufnr: integer? }
+---Close a preview returned by "open". Safe to call with nil or with already-closed windows.
+---@param preview? CodeCompanionToolresults.PreviewHandle
 ---@return nil
 function M.close(preview)
   if not preview then
@@ -60,22 +60,13 @@ function M.close(preview)
   end
 end
 
----@class CodeCompanionToolresults.PreviewOptions
----@field max_lines integer Maximum body lines before scrolling.
----@field max_width integer Maximum preview width in columns.
----@field title? string Border title; truncated to fit.
----@field keybind string|false|nil Key that runs `on_view_more`; false or nil disables the key and its hint.
----@field on_view_more? fun() Callback for `keybind`.
----@field focusable? boolean Whether the preview window can receive focus.
----@field zindex? integer Base stacking order; footer uses the next value.
-
 ---Open a preview beside an anchor in editor-grid coordinates.
 ---
 ---The preview prefers the side with more room, stays inside the screen, and uses a footer for key hints.
 ---@param lines string[] Body lines.
----@param anchor { screenrow: integer, screencol: integer } Anchor in editor-grid coordinates.
+---@param anchor CodeCompanionToolresults.Anchor Anchor in editor-grid coordinates.
 ---@param opts CodeCompanionToolresults.PreviewOptions
----@return { bufnr: integer, winnr: integer, footer_bufnr: integer?, footer_winnr: integer? }? preview
+---@return CodeCompanionToolresults.PreviewHandle? preview
 function M.open(lines, anchor, opts)
   local anchor_col = anchor.screencol
   local space_right = math.max(0, vim.o.columns - anchor_col - 2)

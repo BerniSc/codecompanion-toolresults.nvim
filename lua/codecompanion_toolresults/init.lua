@@ -291,7 +291,8 @@ local function navigate_tool_reference(chat_state, direction)
   vim.api.nvim_win_set_cursor(0, { scroll_target.line, 0 })
 end
 
--- Assigned in the Overview section; renderer dependencies need it to return from a result float.
+-- Forward declaration, later assigned in the Overview section. Renderer dependencies need
+-- it to return from a result float.
 local open_overview
 
 ---Create renderer dependencies for result display and clear actions.
@@ -388,7 +389,7 @@ end
 
 ---Show the hovered tool result in a transient preview without focusing it.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
----@param mouse table Mouse position from getmousepos().
+---@param mouse CodeCompanionToolresults.MousePosition Mouse position from getmousepos().
 local function preview_tool_reference(chat_state, mouse)
   refresh_positions(chat_state)
   -- mouse.line is a 1-based buffer line number.
@@ -463,7 +464,7 @@ end
 ---Show a transient preview of a call's result beside the overview row.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param call_id string Stable tool call identifier.
----@param anchor { screenrow: integer, screencol: integer } Anchor in editor-grid coordinates.
+---@param anchor CodeCompanionToolresults.Anchor Anchor in editor-grid coordinates.
 local function preview_call(chat_state, call_id, anchor)
   close_overview_preview(chat_state)
   reconcile_messages(chat_state)

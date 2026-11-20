@@ -1,6 +1,6 @@
-local transient_preview = require("codecompanion_toolresults.transient_preview")
-
 local M = {}
+
+local transient_preview = require("codecompanion_toolresults.transient_preview")
 
 ---Close the hover preview stored on chat state, if one exists.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
@@ -19,8 +19,8 @@ end
 ---Show a small, scrollable preview beside the hovered tool label.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param lines string[] Rendered result lines.
----@param mouse table Mouse position from getmousepos().
----@param opts table Hover options.
+---@param mouse CodeCompanionToolresults.MousePosition Mouse position from getmousepos().
+---@param opts CodeCompanionToolresults.HoverOptions Hover options.
 ---@param tool_name string Tool name shown in the float border.
 ---@param keybind string|false|nil Key used to open the full managed result float; false or nil disables it.
 ---@param on_view_more fun() Callback to open the full managed result float.
@@ -64,8 +64,8 @@ end
 ---Attach per-chat mouse preview handling and return its cleanup function.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param bufnr integer Chat buffer number.
----@param opts table Hover options.
----@param on_preview fun(mouse: table) Preview callback.
+---@param opts CodeCompanionToolresults.HoverOptions Hover options.
+---@param on_preview fun(mouse: CodeCompanionToolresults.MousePosition) Preview callback.
 ---@return fun() stop Stop timer, remove mappings and autocmds, and close preview.
 function M.attach(chat_state, bufnr, opts, on_preview)
   -- Group hover autocmds per chat buffer and clear stale handlers before attaching new ones.

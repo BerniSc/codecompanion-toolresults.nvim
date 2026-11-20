@@ -76,7 +76,7 @@ end
 ---@param title string Float title.
 ---@param opts table Extension options.
 ---@param ui table UI adapter.
----@param return_to_overview? boolean Whether `q` returns to the originating overview.
+---@param return_to_overview? boolean Whether "q" returns to the originating overview.
 ---@return boolean updated Whether an existing float was updated.
 local function update_float(chat_state, reference, view, lines, title, opts, ui, return_to_overview)
   local float = chat_state.float
@@ -100,12 +100,13 @@ local function update_float(chat_state, reference, view, lines, title, opts, ui,
   return true
 end
 
+-- Shared with the overview, which returns to a chat tool line without a float via init.lua.
 ---Return from the managed result float to its originating chat tool line.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param call_id string Tool call identifier.
 ---@param reconcile fun(chat_state: CodeCompanionToolresults.ChatState) Reconcile current chat messages.
 ---@param close fun() Close this managed float.
-local function return_to_chat(chat_state, call_id, reconcile, close)
+function M.return_to_chat(chat_state, call_id, reconcile, close)
   reconcile(chat_state)
 
   local reference = chat_state.tools[call_id]
@@ -142,8 +143,8 @@ end
 ---@param ui table UI adapter.
 ---@param adapter table Message adapter.
 ---@param reconcile fun(chat_state: CodeCompanionToolresults.ChatState) Reconcile current CodeCompanion messages.
----@param renderer_context table Display dependencies, including `open_overview` for overview returns.
----@param return_to_overview boolean Whether `q` and `<Esc>` reopen the originating overview.
+---@param renderer_context table Display dependencies, including "open_overview" for overview returns.
+---@param return_to_overview? boolean Whether "q" and "<Esc>" reopen the originating overview.
 local function create_float(chat_state, reference, view, lines, title, opts, ui, adapter, reconcile, renderer_context, return_to_overview)
   if chat_state.float then
     ui.close_float(chat_state.float.bufnr, chat_state.float.winnr)
@@ -225,7 +226,7 @@ local function create_float(chat_state, reference, view, lines, title, opts, ui,
     end)
   end
 
-  -- Close the float; when it was opened from the overview, reopen the overview with its prior selection.
+  -- Close the float. When it was opened from the overview, reopen the overview with its prior selection.
   local function dismiss()
     local should_return = float.return_to_overview
     close()
@@ -241,7 +242,7 @@ local function create_float(chat_state, reference, view, lines, title, opts, ui,
     { "n", opts.keymaps.float.previous, function() move(-1) end, "Previous tool result" },
     { "n", opts.keymaps.float.close, dismiss, "Close tool result" },
     { "n", opts.keymaps.float.escape, dismiss, "Close tool result" },
-    { "n", opts.keymaps.float.return_to_chat, function() return_to_chat(chat_state, float.call_id, reconcile, close) end, "Return to tool call" },
+    { "n", opts.keymaps.float.return_to_chat, function() M.return_to_chat(chat_state, float.call_id, reconcile, close) end, "Return to tool call" },
   }
   for _, mapping in ipairs(mappings) do
     if mapping[2] then
@@ -303,9 +304,6 @@ function M.show(chat_state, reference, index, opts, adapter, ui, reconcile, rend
   chat_state.view = view
   return true
 end
-
--- Shared with the overview, which returns to a chat tool line without a float.
-M.return_to_chat = return_to_chat
 
 -- Test seam for the winbar formatter; float lifecycle remains private.
 M._build_winbar = build_winbar

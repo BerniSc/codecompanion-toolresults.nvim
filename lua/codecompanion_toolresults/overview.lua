@@ -4,20 +4,23 @@
 ---read CodeCompanion messages: callers pass plain items with outcomes and summaries already resolved, and
 ---handle inspection, preview, and return-to-chat through callbacks. Overview state stores only the selected
 ---call ID, the grouping, and collapsed groups.
-local model = require("codecompanion_toolresults.overview_model")
-
 local M = {}
+
+local model = require("codecompanion_toolresults.overview_model")
 
 local namespace = vim.api.nvim_create_namespace("CodeCompanionToolresultsOverview")
 
 for name, link in pairs({
   Header = "FloatTitle",
+  ----
   Group = "Title",
+  ----
   Completed = "DiagnosticOk",
   Failed = "DiagnosticError",
   Rejected = "DiagnosticWarn",
   Cancelled = "Comment",
   Unavailable = "Comment",
+  ----
   Tool = "Function",
 }) do
   vim.api.nvim_set_hl(0, "CodeCompanionToolresultsOverview" .. name, { default = true, link = link })
@@ -34,30 +37,7 @@ local outcome_highlights = {
 -- Glyph columns are fixed by `overview_model.format_row`: " NN  <glyph>  <name>".
 local glyph_start = 5
 
----@class CodeCompanionToolresults.OverviewItem
----@field call_id string Tool-call identifier; the only identity stored for selection.
----@field index integer Ordinal position in the chat.
----@field name? string Tool name.
----@field outcome string Outcome from `adapters/messages.lua` `tool_outcome`.
----@field summary string Display-only argument summary.
-
----@alias CodeCompanionToolresults.GroupPicker fun(choices: { grouping: string, label: string }[], on_choice: fun(grouping: string?))
-
----@class CodeCompanionToolresults.OverviewState
----@field grouping? string Current grouping; defaults to `none`. Survives closing the overview.
----@field selected_call_id? string Last selected call; restored on reopen when still present.
----@field collapsed? table<string, boolean> Collapsed group keys, scoped by grouping.
-
----@class CodeCompanionToolresults.OverviewContext
----@field items CodeCompanionToolresults.OverviewItem[] Calls in message order.
----@field state CodeCompanionToolresults.OverviewState Overview presentation state owned by the caller's chat state.
----@field ui table UI adapter with `create_float`, `update_float`, and `close_float`.
----@field keymaps table<string, string|false> Overview mappings keyed by action; `false` disables an action.
----@field filetype string Filetype for the overview buffer.
----@field group_picker? CodeCompanionToolresults.GroupPicker Picker for grouping choices; defaults to `vim.ui.select`.
----@field callbacks { inspect: fun(call_id: string), preview: fun(call_id: string, anchor: table), close_preview: fun(), return_to_chat: fun(call_id: string) }
-
----Default picker: native `vim.ui.select` over grouping choices.
+---Default picker: native "vim.ui.select" for grouping choices.
 ---@type CodeCompanionToolresults.GroupPicker
 local function default_picker(choices, on_choice)
   vim.ui.select(choices, {
@@ -70,8 +50,8 @@ local function default_picker(choices, on_choice)
   end)
 end
 
----@param grouping string?
----@return string
+---@param grouping CodeCompanionToolresults.OverviewGrouping?
+---@return CodeCompanionToolresults.OverviewGrouping
 local function valid_grouping(grouping)
   if grouping and vim.tbl_contains(model.groupings, grouping) then
     return grouping
@@ -81,8 +61,8 @@ end
 
 ---Build lines, call-ID and row lookups, and group headers for one grouping.
 ---@param items CodeCompanionToolresults.OverviewItem[]
----@param grouping string
----@return table layout
+---@param grouping CodeCompanionToolresults.OverviewGrouping
+---@return CodeCompanionToolresults.OverviewLayout layout
 local function build_layout(items, grouping)
   local layout = { lines = { "  Tool calls" }, call_ids = {}, rows = {}, headers = {} }
   if #items == 0 then
@@ -106,21 +86,21 @@ local function build_layout(items, grouping)
   return layout
 end
 
----@param grouping string
+---@param grouping CodeCompanionToolresults.OverviewGrouping
 ---@param count integer
 ---@return string
 local function title(grouping, count)
   return string.format("Tool Overview [%d] · %s", count, model.grouping_labels[grouping])
 end
 
----@param handle table
+---@param handle CodeCompanionToolresults.OverviewHandle
 ---@return boolean
 local function is_open(handle)
   return handle ~= nil and not handle.closed and vim.api.nvim_win_is_valid(handle.winnr)
 end
 
 ---Record which group folds are closed so they can be restored for the same grouping.
----@param handle table
+---@param handle CodeCompanionToolresults.OverviewHandle
 local function remember_collapsed(handle)
   if not is_open(handle) or #handle.layout.headers == 0 then
     return
@@ -137,7 +117,7 @@ local function remember_collapsed(handle)
 end
 
 ---Create one manual fold per group and restore collapsed groups.
----@param handle table
+---@param handle CodeCompanionToolresults.OverviewHandle
 local function apply_folds(handle)
   local winnr = handle.winnr
   local layout = handle.layout
@@ -167,7 +147,7 @@ local function apply_folds(handle)
 end
 
 ---Highlight header rows and outcome glyph and tool name columns.
----@param handle table
+---@param handle CodeCompanionToolresults.OverviewHandle
 local function highlight(handle)
   local bufnr = handle.bufnr
   if not vim.api.nvim_buf_is_valid(bufnr) then
@@ -176,23 +156,38 @@ local function highlight(handle)
   vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
 
   local layout = handle.layout
-  vim.api.nvim_buf_add_highlight(bufnr, namespace, "CodeCompanionToolresultsOverviewHeader", 0, 0, -1)
+  -- Extmarks replace the deprecated nvim_buf_add_highlight. Columns are 0-based byte offsets, end-exclusive.
+  local header_text = layout.lines[1]
+  vim.api.nvim_buf_set_extmark(bufnr, namespace, 0, 0, {
+    end_col = #header_text,
+    hl_group = "CodeCompanionToolresultsOverviewHeader",
+    hl_eol = true, -- Extend the highlight to the window edge.
+  })
   for _, header in ipairs(layout.headers) do
-    vim.api.nvim_buf_add_highlight(bufnr, namespace, "CodeCompanionToolresultsOverviewGroup", header.line - 1, 0, -1)
+    vim.api.nvim_buf_set_extmark(bufnr, namespace, header.line - 1, 0, {
+      end_col = #layout.lines[header.line],
+      hl_group = "CodeCompanionToolresultsOverviewGroup",
+      hl_eol = true,
+    })
   end
   for line, row in pairs(layout.rows) do
+    -- Glyph positions are byte offsets, so glyph_bytes covers multibyte glyphs such as "✓".
     local glyph = vim.fn.strcharpart(layout.lines[line], glyph_start, 1)
     local glyph_bytes = #glyph
-    vim.api.nvim_buf_add_highlight(bufnr, namespace, outcome_highlights[row.outcome] or "Comment", line - 1,
-      glyph_start, glyph_start + glyph_bytes)
+    vim.api.nvim_buf_set_extmark(bufnr, namespace, line - 1, glyph_start, {
+      end_col = glyph_start + glyph_bytes,
+      hl_group = outcome_highlights[row.outcome] or "Comment",
+    })
     local name_start = glyph_start + glyph_bytes + 2
-    vim.api.nvim_buf_add_highlight(bufnr, namespace, "CodeCompanionToolresultsOverviewTool", line - 1,
-      name_start, name_start + #row.name)
+    vim.api.nvim_buf_set_extmark(bufnr, namespace, line - 1, name_start, {
+      end_col = name_start + #row.name,
+      hl_group = "CodeCompanionToolresultsOverviewTool",
+    })
   end
 end
 
 ---Move the cursor to a call ID, or the first call row when it is absent.
----@param handle table
+---@param handle CodeCompanionToolresults.OverviewHandle
 ---@param call_id? string
 local function select_call(handle, call_id)
   local layout = handle.layout
@@ -211,7 +206,7 @@ local function select_call(handle, call_id)
   end
 end
 
----@param handle table
+---@param handle CodeCompanionToolresults.OverviewHandle
 ---@return string? call_id
 local function selected_call_id(handle)
   if not is_open(handle) then
@@ -222,8 +217,8 @@ local function selected_call_id(handle)
 end
 
 ---Anchor for a transient preview beside the selected row, in editor-grid coordinates.
----@param handle table
----@return { screenrow: integer, screencol: integer }
+---@param handle CodeCompanionToolresults.OverviewHandle
+---@return CodeCompanionToolresults.Anchor
 local function preview_anchor(handle)
   local line = vim.api.nvim_win_get_cursor(handle.winnr)[1]
   local screenpos = vim.fn.screenpos(handle.winnr, line, 1)
@@ -232,11 +227,9 @@ local function preview_anchor(handle)
   return { screenrow = screenpos.row, screencol = position[2] + math.floor(width / 2) }
 end
 
-local close
-
 ---Close the overview and remember its selection and folds.
----@param handle table
-close = function(handle)
+---@param handle? CodeCompanionToolresults.OverviewHandle
+local close = function(handle)
   if not handle or handle.closed then
     return
   end
@@ -250,8 +243,8 @@ close = function(handle)
 end
 
 ---Rebuild the overview for a grouping while keeping the selected call when possible.
----@param handle table
----@param grouping string
+---@param handle CodeCompanionToolresults.OverviewHandle
+---@param grouping CodeCompanionToolresults.OverviewGrouping
 local function regroup(handle, grouping)
   if not is_open(handle) then
     return
@@ -274,7 +267,7 @@ local function regroup(handle, grouping)
 end
 
 ---Open the grouping picker and apply the chosen grouping.
----@param handle table
+---@param handle CodeCompanionToolresults.OverviewHandle
 local function choose_grouping(handle)
   local choices = {}
   for _, grouping in ipairs(model.groupings) do
@@ -289,8 +282,8 @@ local function choose_grouping(handle)
   end)
 end
 
----Install overview-local mappings. Disabled actions (`false`) are skipped.
----@param handle table
+---Install overview-local mappings. Disabled actions ("=false") are skipped.
+---@param handle CodeCompanionToolresults.OverviewHandle
 local function install_mappings(handle)
   local context = handle.context
   local keymaps = context.keymaps
@@ -331,10 +324,9 @@ local function install_mappings(handle)
 end
 
 ---Open the overview for one chat.
----
 ---Returns a handle that callers keep to close or regroup the overview. The handle is not a copy of chat data.
 ---@param context CodeCompanionToolresults.OverviewContext
----@return table handle
+---@return CodeCompanionToolresults.OverviewHandle handle
 function M.open(context)
   local grouping = valid_grouping(context.state.grouping)
   local layout = build_layout(context.items, grouping)
@@ -359,7 +351,7 @@ function M.open(context)
 end
 
 ---Close an overview handle. Safe to call more than once.
----@param handle table? Handle returned by `open`.
+---@param handle CodeCompanionToolresults.OverviewHandle? Handle returned by `open`.
 function M.close(handle)
   close(handle)
 end

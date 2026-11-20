@@ -31,6 +31,8 @@ local outcome_glyphs = {
   unavailable = "?",
 }
 
+-- Argument keys tried in order when a tool has no run_command. The first string value wins, so earlier keys
+-- take priority if a tool passes several.
 local summary_keys = { "filepath", "path", "query", "search_term", "pattern", "file" }
 local max_summary_chars = 54
 
@@ -68,7 +70,7 @@ function M.summary(command, arguments)
 end
 
 ---Format one overview row.
----@param item { index: integer, name: string?, outcome: string, summary: string }
+---@param item CodeCompanionToolresults.OverviewItem
 ---@return string
 function M.format_row(item)
   return string.format(" %02d  %s  %-17s %s", item.index, outcome_glyphs[item.outcome] or "?",
@@ -76,8 +78,8 @@ function M.format_row(item)
 end
 
 ---Return the group key and label for one item under a grouping.
----@param item table Overview item.
----@param grouping string
+---@param item CodeCompanionToolresults.OverviewItem Overview item.
+---@param grouping CodeCompanionToolresults.OverviewGrouping
 ---@return string key
 ---@return string? label
 local function group_of(item, grouping)
@@ -94,9 +96,9 @@ end
 ---Group items for display, preserving message order inside each group.
 ---
 ---Outcome groups follow a fixed order. Tool groups follow first appearance in the chat.
----@param items { index: integer, name: string?, outcome: string }[] Items in message order.
----@param grouping string One of `M.groupings`.
----@return { key: string, label: string?, items: table[] }[]? groups
+---@param items CodeCompanionToolresults.OverviewItem[] Items in message order.
+---@param grouping CodeCompanionToolresults.OverviewGrouping One of `M.groupings`.
+---@return CodeCompanionToolresults.OverviewGroup[]? groups
 ---@return string? error
 function M.group(items, grouping)
   if not vim.tbl_contains(M.groupings, grouping) then
