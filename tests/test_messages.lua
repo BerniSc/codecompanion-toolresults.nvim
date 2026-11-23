@@ -286,4 +286,183 @@ T["prepare_tool_result_clear"]["removes stale estimate when CodeCompanion estima
   end)
 end
 
+T["tool_outcome"] = MiniTest.new_set()
+
+local function call_message(call_id, name, arguments)
+  return {
+    role = "llm",
+    tools = { calls = { { id = call_id, ["function"] = { name = name, arguments = arguments } } } },
+  }
+end
+
+local function result_message(call_id, name, content)
+  return { role = "tool", tools = { call_id = call_id, name = name }, content = content }
+end
+
+T["tool_outcome"]["classifies completed and failed results"] = function()
+  local stack = {
+    call_message("call-ok", "read_file", '{"filepath":"a.lua"}'),
+    result_message("call-ok", "read_file", "local a = 1"),
+    call_message("call-fail", "create_file", '{"filepath":"new.md"}'),
+    result_message("call-fail", "create_file", "Failed creating `new.md` - File/directory already exists"),
+    call_message("call-error", "read_file", '{"filepath":"missing.md"}'),
+    result_message("call-error", "read_file", "Error: file not found"),
+  }
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-ok"), "completed")
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-fail"), "failed")
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-error"), "failed")
+end
+
+T["tool_outcome"]["does not treat ordinary words as failures"] = function()
+  local stack = {
+    call_message("call-words", "grep_search", '{"query":"Errors"}'),
+    result_message("call-words", "grep_search", "Errors are handled in init.lua"),
+  }
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-words"), "completed")
+end
+
+T["tool_outcome"]["classifies cancelled and rejected results"] = function()
+  local stack = {
+    call_message("call-cancel", "grep_search", '{"query":"needle"}'),
+    result_message("call-cancel", "grep_search", "The user cancelled the execution of the grep_search tool"),
+    call_message("call-reject", "read_file", '{"filepath":"secret.txt"}'),
+    result_message("call-reject", "read_file", "The user rejected the read file tool"),
+  }
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-cancel"), "cancelled")
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-reject"), "rejected")
+end
+
+T["tool_outcome"]["classifies a multiline run_command rejection using its stored command"] = function()
+  local command = "cat << EOF\nhello\nEOF"
+  local stack = {
+    call_message("call-multiline", "run_command", vim.json.encode({ cmd = command, flag = vim.NIL })),
+    result_message("call-multiline", "run_command",
+      "The user rejected the execution of the `" .. command .. "` command, with the reason: \"not now\""),
+  }
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-multiline"), "rejected")
+end
+
+T["tool_outcome"]["rejection takes precedence over the failure marker"] = function()
+  local stack = {
+    call_message("call-both", "read_file", '{"filepath":"a"}'),
+    result_message("call-both", "read_file", "Failed: nothing\nThe user rejected the read file tool"),
+  }
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-both"), "rejected")
+end
+
+T["tool_outcome"]["looks up repeated tools by call ID, not by name"] = function()
+  local stack = {
+    call_message("call-a", "grep_search", '{"query":"a"}'),
+    call_message("call-b", "grep_search", '{"query":"b"}'),
+    result_message("call-a", "grep_search", "Failed searching"),
+    result_message("call-b", "grep_search", "matches"),
+  }
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-a"), "failed")
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-b"), "completed")
+end
+
+T["tool_outcome"]["reports a missing result as unavailable"] = function()
+  local stack = { call_message("call-pending", "read_file", '{"filepath":"a"}') }
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-pending"), "unavailable")
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call-unknown"), "unavailable")
+  MiniTest.expect.equality(messages.tool_outcome(stack, nil), "unavailable")
+end
+
+T["overview_items"] = MiniTest.new_set()
+
+local function summarise_for_test(command, arguments)
+  if command then
+    return command
+  end
+  return arguments and arguments.filepath or ""
+end
+
+T["overview_items"]["builds ordered items with outcome and summary"] = function()
+  local stack = {
+    call_message("call-a", "read_file", '{"filepath":"a.lua"}'),
+    result_message("call-a", "read_file", "local a = 1"),
+    call_message("call-b", "grep_search", '{"query":"needle"}'),
+    result_message("call-b", "grep_search", "Failed searching"),
+    call_message("call-c", "read_file", '{"filepath":"pending.lua"}'),
+  }
+  local items = messages.overview_items(stack, summarise_for_test)
+  MiniTest.expect.equality(items, {
+    { call_id = "call-a", index = 1, name = "read_file", outcome = "completed", summary = "a.lua" },
+    { call_id = "call-b", index = 2, name = "grep_search", outcome = "failed", summary = "" },
+    -- summarise_for_test only reads filepath, so grep_search's query is not shown here.
+    { call_id = "call-c", index = 3, name = "read_file", outcome = "unavailable", summary = "pending.lua" },
+  })
+end
+
+T["overview_items"]["uses run_command input as summary"] = function()
+  local stack = {
+    call_message("call-cmd", "run_command", vim.json.encode({ cmd = "date", flag = vim.NIL })),
+    result_message("call-cmd", "run_command", "`date`\nMon"),
+  }
+  local items = messages.overview_items(stack, summarise_for_test)
+  MiniTest.expect.equality(items[1].summary, "date")
+end
+
+T["overview_items"]["decodes run_command arguments when call_id is the only identifier"] = function()
+  local command = "cat << EOF\nhello\nEOF"
+  local stack = {
+    {
+      role = "llm",
+      tools = {
+        calls = {
+          {
+            call_id = "call-responses-multiline",
+            ["function"] = {
+              name = "run_command",
+              arguments = vim.json.encode({ cmd = command, flag = vim.NIL }),
+            },
+          },
+        },
+      },
+    },
+    result_message("call-responses-multiline", "run_command",
+      "The user rejected the execution of the `" .. command .. "` command, with the reason: \"not now\""),
+  }
+  local items = messages.overview_items(stack, function(cmd) return cmd or "" end)
+  MiniTest.expect.equality(items[1].summary, command)
+  MiniTest.expect.equality(items[1].outcome, "rejected")
+end
+
+T["overview_items"]["keeps repeated tools distinct by call ID"] = function()
+  local stack = {
+    call_message("call-1", "grep_search", '{"query":"a"}'),
+    call_message("call-2", "grep_search", '{"query":"b"}'),
+    result_message("call-2", "grep_search", "matches"),
+    result_message("call-1", "grep_search", "Error: bad"),
+  }
+  -- Items follow tool-call message order, independent of result arrival order.
+  local items = messages.overview_items(stack, summarise_for_test)
+  MiniTest.expect.equality(items[1].call_id, "call-1")
+  MiniTest.expect.equality(items[1].outcome, "failed")
+  MiniTest.expect.equality(items[2].call_id, "call-2")
+  MiniTest.expect.equality(items[2].outcome, "completed")
+end
+
+T["overview_items"]["returns no items for an empty chat"] = function()
+  MiniTest.expect.equality(messages.overview_items({}, summarise_for_test), {})
+end
+
+T["overview_items"]["supports the id form of tool call IDs"] = function()
+  local stack = {
+    { role = "llm", tools = { calls = { { id = "call_provider_form_2", ["function"] = { name = "read_file", arguments = '{"filepath":"x"}' } } } } },
+    result_message("call_provider_form_2", "read_file", "ok"),
+  }
+  local items = messages.overview_items(stack, summarise_for_test)
+  MiniTest.expect.equality(items[1].call_id, "call_provider_form_2")
+  MiniTest.expect.equality(items[1].summary, "x")
+end
+
+T["tool_outcome"]["supports the id form of tool call IDs"] = function()
+  local stack = {
+    { role = "llm", tools = { calls = { { id = "call_provider_form_1", ["function"] = { name = "read_file" } } } } },
+    result_message("call_provider_form_1", "read_file", "Failed reading"),
+  }
+  MiniTest.expect.equality(messages.tool_outcome(stack, "call_provider_form_1"), "failed")
+end
+
 return T

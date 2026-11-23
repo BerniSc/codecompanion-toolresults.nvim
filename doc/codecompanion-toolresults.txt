@@ -41,6 +41,7 @@ Default mappings:
 
   Chat buffer ~
     gT          Open the result for the tool call under the cursor.
+    gO          Open the tool overview.
     gtn         Move to the next tool call.
     gtp         Move to the previous tool call.
 
@@ -52,12 +53,101 @@ Default mappings:
     gT          Close the float and return to the tool-call line.
     q, <Esc>    Close the float.
 
+  Tool overview ~
+    <CR>        Open the selected result in the float.
+    K           Preview the selected result beside its row.
+    <M-g>       Choose a grouping.
+    gT          Close the overview and return to the tool-call line.
+    q, <Esc>    Close the overview.
+
 Float navigation wraps at the ends of the result list. Closing the float does
 not discard the selected view for that chat. Closing the chat discards it.
 
 The optional mouse preview is disabled by default. Enable `hover.enabled` and
 set Neovim's global `vim.o.mousemoveevent = true` to use it. This plugin does
 not change that global option.
+
+=============================================================================
+TOOL OVERVIEW                                    *codecompanion-toolresults-overview*
+
+Press `gO` in a chat to list every tool call in that chat in one window. Use it
+to see what ran, how each call ended, and which result to open.
+
+Each row shows the call number, an outcome glyph, the tool name, and a short
+argument summary.
+
+Outcome glyphs ~
+    ✓   Completed. The result is available and is not a failure, rejection,
+        or cancellation.
+    !   Failed. The first result line starts with "Failed ", "Failed:", or
+        "Error:". This is a heuristic.
+    ×   Rejected. CodeCompanion reports that the call was rejected.
+    -   Cancelled. CodeCompanion reports that the call was cancelled.
+    ?   Unavailable. No current result exists, for example while the call runs
+        or after context management removed it.
+
+Rejected and cancelled take precedence over the failed marker.
+
+Grouping ~
+Press `<M-g>` to choose a grouping:
+
+    No grouping   Calls in chat order.
+    Outcome       Calls grouped in a fixed order, from completed to unavailable.
+    Tool type     Calls grouped by tool name, in order of first appearance.
+
+Each group has a manual fold. Use standard Vim fold commands, such as `za`, to
+collapse or expand it. Collapsed groups stay collapsed when you reopen the
+overview in the same chat with the same grouping.
+
+Closing the result float with `q` or `<Esc>` reopens the overview with the
+previous selection. `gT` in the float returns to the chat line instead.
+
+The overview reads current messages when it opens and does not update while
+open. Close it and reopen with `gO` after a result arrives or context management
+changes it. The overview stores no tool output. Closing the chat discards its
+selection, grouping, and fold state.
+
+For `run_command`, the summary is the command, flattened to one line and cut to
+54 characters. For other tools, it is the first of `filepath`, `path`, `query`,
+`search_term`, `pattern`, or `file` that holds a string.
+
+Custom grouping picker ~
+Set `overview.group_picker` to a function `(choices, on_choice)` to replace the
+default `vim.ui.select` picker. Each choice is a table `{ grouping, label }`,
+where `grouping` is `"none"`, `"outcome"`, or `"tool"`, and `label` is the
+display text. Call `on_choice` with the chosen `grouping`, or with no argument
+to cancel. Unknown values are ignored. The callback may run after the picker
+returns; the overview ignores it if the overview has already closed.
+
+Example picker that uses `vim.ui.select` with custom prompt text:
+
+>lua
+  require("codecompanion").setup({
+    extensions = {
+      toolresults = {
+        enabled = true,
+        opts = {
+          overview = {
+            group_picker = function(choices, on_choice)
+              vim.ui.select(choices, {
+                prompt = "Group tool calls",
+                format_item = function(choice) return choice.label end,
+              }, function(choice)
+                on_choice(choice and choice.grouping)
+              end)
+            end,
+          },
+        },
+      },
+    },
+  })
+<
+
+Known limitations ~
+- The overview does not refresh while open.
+- The failed marker is a heuristic.
+- From index 100, the outcome glyph highlight can shift off the glyph.
+- Agent-turn grouping is not available.
 
 =============================================================================
 OPTIONS                                           *codecompanion-toolresults-options*
@@ -87,6 +177,20 @@ Options are set in `extensions.toolresults.opts` within
   keymaps.float.return_to_chat
                           "gT" (default). Set to false to disable.
   float.show_keymaps      true (default). Show float mappings in the winbar.
+  keymaps.chat.overview   "gO" (default). Set to false to disable.
+  keymaps.overview.inspect
+                          "<CR>" (default). Set to false to disable.
+  keymaps.overview.preview
+                          "K" (default). Set to false to disable.
+  keymaps.overview.group  "<M-g>" (default). Set to false to disable.
+  keymaps.overview.return_to_chat
+                          "gT" (default). Set to false to disable.
+  keymaps.overview.close  "q" (default). Set to false to disable.
+  keymaps.overview.escape "<Esc>" (default). Set to false to disable.
+  overview.filetype       "codecompanion-toolresults-overview" (default).
+                          Set "codecompanion" to enable Markdown rendering.
+  overview.group_picker   nil (default). Function replacing vim.ui.select
+                          for grouping choices.
   run_command_language    "bash" (default). Display label for run_command
                           snippets; false disables the result code fence.
 

@@ -76,8 +76,9 @@ end
 ---@param title string Float title.
 ---@param opts table Extension options.
 ---@param ui table UI adapter.
+---@param return_to_overview? boolean Whether "q" returns to the originating overview.
 ---@return boolean updated Whether an existing float was updated.
-local function update_float(chat_state, reference, view, lines, title, opts, ui)
+local function update_float(chat_state, reference, view, lines, title, opts, ui, return_to_overview)
   local float = chat_state.float
   -- Return false when no managed float exists or its window/buffer was manually closed. The caller then closes stale
   -- state and recreates the managed float.
@@ -90,6 +91,7 @@ local function update_float(chat_state, reference, view, lines, title, opts, ui)
   local call_changed = float.call_id ~= reference.call_id
   float.call_id = reference.call_id
   float.view = view
+  float.return_to_overview = return_to_overview == true
   -- Reset reused cursor on view/call change, might be changed again by positioning logic.
   if view_changed or call_changed then
     vim.api.nvim_win_set_cursor(float.winnr, { 1, 0 })
@@ -98,12 +100,13 @@ local function update_float(chat_state, reference, view, lines, title, opts, ui)
   return true
 end
 
+-- Shared with the overview, which returns to a chat tool line without a float via init.lua.
 ---Return from the managed result float to its originating chat tool line.
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@param call_id string Tool call identifier.
 ---@param reconcile fun(chat_state: CodeCompanionToolresults.ChatState) Reconcile current chat messages.
 ---@param close fun() Close this managed float.
-local function return_to_chat(chat_state, call_id, reconcile, close)
+function M.return_to_chat(chat_state, call_id, reconcile, close)
   reconcile(chat_state)
 
   local reference = chat_state.tools[call_id]
@@ -140,14 +143,21 @@ end
 ---@param ui table UI adapter.
 ---@param adapter table Message adapter.
 ---@param reconcile fun(chat_state: CodeCompanionToolresults.ChatState) Reconcile current CodeCompanion messages.
----@param renderer_context table Renderer dependencies.
-local function create_float(chat_state, reference, view, lines, title, opts, ui, adapter, reconcile, renderer_context)
+---@param renderer_context table Display dependencies, including "open_overview" for overview returns.
+---@param return_to_overview? boolean Whether "q" and "<Esc>" reopen the originating overview.
+local function create_float(chat_state, reference, view, lines, title, opts, ui, adapter, reconcile, renderer_context, return_to_overview)
   if chat_state.float then
     ui.close_float(chat_state.float.bufnr, chat_state.float.winnr)
   end
 
   local bufnr, winnr = ui.create_float(lines, { title = title, winbar = build_winbar(opts, view) })
-  local float = { bufnr = bufnr, winnr = winnr, call_id = reference.call_id, view = view }
+  local float = {
+    bufnr = bufnr,
+    winnr = winnr,
+    call_id = reference.call_id,
+    view = view,
+    return_to_overview = return_to_overview == true,
+  }
   chat_state.float = float
 
   local function close()
@@ -180,7 +190,7 @@ local function create_float(chat_state, reference, view, lines, title, opts, ui,
     if next_index then
       -- Keep the injected dependencies explicit for testability. If this list grows,
       -- group them into a display context rather than hiding them in global state.
-      M.show(chat_state, chat_state.references[next_index], next_index, opts, adapter, ui, reconcile, renderer_context, float.view)
+      M.show(chat_state, chat_state.references[next_index], next_index, opts, adapter, ui, reconcile, renderer_context, float.view, float.return_to_overview)
     end
   end
 
@@ -195,7 +205,7 @@ local function create_float(chat_state, reference, view, lines, title, opts, ui,
       return
     end
     local next_view = float.view == "call" and "result" or "call"
-    M.show(chat_state, chat_state.references[index], index, opts, adapter, ui, reconcile, renderer_context, next_view)
+    M.show(chat_state, chat_state.references[index], index, opts, adapter, ui, reconcile, renderer_context, next_view, float.return_to_overview)
   end
 
   local function clear_result()
@@ -211,9 +221,18 @@ local function create_float(chat_state, reference, view, lines, title, opts, ui,
       reconcile(chat_state)
       local index = current_index()
       if index then
-        M.show(chat_state, chat_state.references[index], index, opts, adapter, ui, reconcile, renderer_context, float.view)
+        M.show(chat_state, chat_state.references[index], index, opts, adapter, ui, reconcile, renderer_context, float.view, float.return_to_overview)
       end
     end)
+  end
+
+  -- Close the float. When it was opened from the overview, reopen the overview with its prior selection.
+  local function dismiss()
+    local should_return = float.return_to_overview
+    close()
+    if should_return and renderer_context.open_overview then
+      renderer_context.open_overview(chat_state)
+    end
   end
 
   local mappings = {
@@ -221,9 +240,9 @@ local function create_float(chat_state, reference, view, lines, title, opts, ui,
     { "n", opts.keymaps.float.clear_result, clear_result, "Clear tool result from future local context" },
     { "n", opts.keymaps.float.next, function() move(1) end, "Next tool result" },
     { "n", opts.keymaps.float.previous, function() move(-1) end, "Previous tool result" },
-    { "n", opts.keymaps.float.close, close, "Close tool result" },
-    { "n", opts.keymaps.float.escape, close, "Close tool result" },
-    { "n", opts.keymaps.float.return_to_chat, function() return_to_chat(chat_state, float.call_id, reconcile, close) end, "Return to tool call" },
+    { "n", opts.keymaps.float.close, dismiss, "Close tool result" },
+    { "n", opts.keymaps.float.escape, dismiss, "Close tool result" },
+    { "n", opts.keymaps.float.return_to_chat, function() M.return_to_chat(chat_state, float.call_id, reconcile, close) end, "Return to tool call" },
   }
   for _, mapping in ipairs(mappings) do
     if mapping[2] then
@@ -245,10 +264,11 @@ end
 ---@param adapter table Message adapter.
 ---@param ui table UI adapter.
 ---@param reconcile fun(chat_state: table) Reconcile current chat messages.
----@param renderer_context table Renderer dependencies.
+---@param renderer_context table Renderer and display dependencies.
 ---@param view? "call"|"result" View to display; defaults to the current float view, then the last chat view, then result.
+---@param return_to_overview? boolean Whether closing the float reopens the originating overview.
 ---@return boolean displayed Whether the result was displayed.
-function M.show(chat_state, reference, index, opts, adapter, ui, reconcile, renderer_context, view)
+function M.show(chat_state, reference, index, opts, adapter, ui, reconcile, renderer_context, view, return_to_overview)
   view = view or (chat_state.float and chat_state.float.view) or chat_state.view or "result"
   local lines
   local title
@@ -267,7 +287,7 @@ function M.show(chat_state, reference, index, opts, adapter, ui, reconcile, rend
       local unavailable_title = build_title({ name = reference.name }, index, #chat_state.references, view)
       local unavailable_lines = { "Tool result unavailable." }
       if chat_state.float and chat_state.float.call_id == reference.call_id then
-        update_float(chat_state, reference, view, unavailable_lines, unavailable_title, opts, ui)
+        update_float(chat_state, reference, view, unavailable_lines, unavailable_title, opts, ui, return_to_overview)
       end
       vim.notify(string.format("Tool result unavailable: %s (%s)", reference.name or "?", tostring(reference.call_id or "?")), vim.log.levels.WARN)
       return false
@@ -276,8 +296,8 @@ function M.show(chat_state, reference, index, opts, adapter, ui, reconcile, rend
     title = build_title(result, index, #chat_state.references, view)
   end
 
-  if not update_float(chat_state, reference, view, lines, title, opts, ui) then
-    create_float(chat_state, reference, view, lines, title, opts, ui, adapter, reconcile, renderer_context)
+  if not update_float(chat_state, reference, view, lines, title, opts, ui, return_to_overview) then
+    create_float(chat_state, reference, view, lines, title, opts, ui, adapter, reconcile, renderer_context, return_to_overview)
   end
 
   -- Result view is the initial default; retain the last successful choice across float closure within this chat.

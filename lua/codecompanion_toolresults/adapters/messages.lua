@@ -4,14 +4,15 @@ local function rejection_base(line)
   return line:gsub(', with the reason: ".*"$', "")
 end
 
----Find recognized cancellation or rejection text in a tool result.
+---Find recognized cancellation or rejection-text in a tool result by heuristic.
 ---@param content any Tool output content.
 ---@param name? string Tool name.
 ---@param command? string Parsed run_command command.
----@return string? line Rejection text, or nil for ordinary output.
-local function invalidated_line(content, name, command)
+---@return "cancelled"|"rejected"|nil kind Invalidation kind, or nil for ordinary output.
+---@return string? line Display label for the invalidation, or nil for ordinary output.
+local function invalidation(content, name, command)
   if type(content) ~= "string" then
-    return nil
+    return nil, nil
   end
 
   -- Multiline commands make the rejection span several lines. Match the exact
@@ -21,7 +22,7 @@ local function invalidated_line(content, name, command)
     local _, rejection_end = content:find(rejection, 1, true)
     if rejection_end then
       local reason = content:sub(rejection_end + 1):match('^(, with the reason: "[^"]*")')
-      return rejection .. (reason or "")
+      return "rejected", rejection .. (reason or "")
     end
   end
 
@@ -34,7 +35,7 @@ local function invalidated_line(content, name, command)
       and line == string.format("The user cancelled the execution of the %s tool", name)
 
     if is_cancelled then
-      return string.format("Cancelled `%s`", name)
+      return "cancelled", string.format("Cancelled `%s`", name)
     end
 
     -- rejection.
@@ -55,12 +56,36 @@ local function invalidated_line(content, name, command)
       or base_line:match("^The user rejected the execution of the [^ ]+ tool$")
       or line:match('^User rejected the changes for .-`, with the reason ".-"$')    -- insert edit into file
     then
-      return line
+      return "rejected", line
     end
   end
 
   -- basecase - not invalidated.
-  return nil
+  return nil, nil
+end
+
+---Find recognized cancellation or rejection text in a tool result.
+---@param content any Tool output content.
+---@param name? string Tool name.
+---@param command? string Parsed run_command command.
+---@return string? line Rejection or cancellation label, or nil for ordinary output.
+local function invalidated_line(content, name, command)
+  local _, line = invalidation(content, name, command)
+  return line
+end
+
+---Check whether a tool result starts with a recognised failure marker.
+---
+---This is a heuristic over the first output line. Only the exact "Failed" and "Error:" markers count, so
+---ordinary words such as "Errors" or "Error handling" do not match.
+---@param content any Tool output content.
+---@return boolean failed
+local function failed(content)
+  if type(content) ~= "string" then
+    return false
+  end
+  local first_line = content:match("^[^\r\n]*") or ""
+  return first_line:match("^Failed[ :]") ~= nil or first_line:match("^Error:") ~= nil
 end
 
 ---Extract CodeCompanion metadata used to identify a message.
@@ -87,19 +112,17 @@ local function index_tool_commands(messages)
 
   for _, message in ipairs(messages or {}) do
     for _, call in ipairs((message.tools and message.tools.calls) or {}) do
+      local call_id = call.call_id or call.id
       local function_call = call["function"] or {}
       local arguments = function_call.arguments
 
-      if call.id and function_call.name == "run_command" and type(arguments) == "string" then
+      if call_id and function_call.name == "run_command" and type(arguments) == "string" then
         local ok, decoded = pcall(vim.json.decode, arguments)
         arguments = ok and decoded or nil
       end
 
-      if function_call.name == "run_command" and type(arguments) == "table" and type(arguments.cmd) == "string" then
-        local call_id = call.call_id or call.id
-        if call_id then
-          cmds_by_id[call_id] = arguments.cmd
-        end
+      if call_id and function_call.name == "run_command" and type(arguments) == "table" and type(arguments.cmd) == "string" then
+        cmds_by_id[call_id] = arguments.cmd
       end
     end
   end
@@ -260,6 +283,61 @@ function M.find_tool_result(messages, call_id)
       return result
     end
   end
+end
+
+---Classify the current outcome of a tool call for overview display.
+---
+---The result is read from current messages by call ID on every call; no outcome is stored. Rejection and
+---cancellation take precedence over the failure heuristic.
+---@param messages CodeCompanion.Chat.Messages Current CodeCompanion message stack.
+---@param call_id string Tool-call identifier.
+---@return CodeCompanionToolresults.ToolOutcome outcome
+function M.tool_outcome(messages, call_id)
+  local result = M.find_tool_result(messages, call_id)
+  if not result then
+    return "unavailable"
+  end
+
+  local command = index_tool_commands(messages)[call_id]
+  local kind = invalidation(result.content, result.name, command)
+  if kind then
+    return kind
+  end
+  if failed(result.content) then
+    return "failed"
+  end
+  return "completed"
+end
+
+---Build plain overview items for the current chat, in message order.
+---Each item carries the call ID, ordinal, tool name, outcome, and display-only argument summary. Items are built
+---from current messages on every call and are not cached. Arguments are used only to derive the summary.
+---@param messages CodeCompanion.Chat.Messages Current CodeCompanion message stack.
+---@param summarise CodeCompanionToolresults.OverviewSummariser Summary builder, supplied by the overview model.
+---@return CodeCompanionToolresults.OverviewItem[] items
+function M.overview_items(messages, summarise)
+  -- Enumerate tool calls rather than results so calls still waiting for a result appear as unavailable.
+  local commands_by_id = index_tool_commands(messages)
+  local items = {}
+  local seen = {}
+  for _, message in ipairs(messages or {}) do
+    for _, call in ipairs((message.tools and message.tools.calls) or {}) do
+      -- Ensure we handle Responses API correctly, even if CodeCompanion should always do this as well.
+      local call_id = call.call_id or call.id
+      if call_id and not seen[call_id] then
+        seen[call_id] = true
+        local current = M.find_tool_call(messages, call_id)
+        items[#items + 1] = {
+          call_id = call_id,
+          index = #items + 1,
+          name = current and current.name or nil,
+          outcome = M.tool_outcome(messages, call_id),
+          summary = summarise(commands_by_id[call_id], current and current.arguments or nil),
+        }
+      end
+    end
+  end
+  return items
 end
 
 ---Prepare a tool-result clear operation against CodeCompanion's live chat for the unique original
