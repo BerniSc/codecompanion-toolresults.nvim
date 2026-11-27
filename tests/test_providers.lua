@@ -14,6 +14,12 @@ T["provider selection"]["selects HTTP provider by adapter type"] = function()
   MiniTest.expect.equality(err, nil)
 end
 
+T["provider selection"]["keeps ACP disabled until its shared rendering integration is ready"] = function()
+  local provider, err = providers.for_chat({ adapter = { type = "acp" } })
+  MiniTest.expect.equality(provider, nil)
+  MiniTest.expect.equality(err, "Unsupported CodeCompanion adapter type: acp")
+end
+
 T["provider selection"]["returns a useful error for unsupported or absent type"] = function()
   local provider, unsupported_error = providers.for_chat({ adapter = { type = "future" } })
   MiniTest.expect.equality(provider, nil)

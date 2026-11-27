@@ -35,6 +35,11 @@ T["format_row"]["renders ordinal, outcome glyph, tool name and summary"] = funct
   MiniTest.expect.equality(row, " 03  !  read_file         a.lua")
 end
 
+T["format_row"]["renders active ACP state distinctly"] = function()
+  local row = model.format_row({ call_id = "read", index = 1, name = "execute", outcome = "active", summary = "running" })
+  MiniTest.expect.equality(row, " 01  ~  execute           running")
+end
+
 T["format_row"]["falls back for unknown tool names"] = function()
   local row = model.format_row({ index = 1, name = nil, outcome = "unavailable", summary = "" })
   MiniTest.expect.equality(row:find("unknown", 1, true) ~= nil, true)
