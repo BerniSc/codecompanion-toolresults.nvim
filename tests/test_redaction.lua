@@ -21,7 +21,6 @@ local function make_context(content)
   local chat = { bufnr = bufnr, messages = { message } }
   local state = {
     chat = chat,
-    messages = chat.messages,
     tools = { ["call-1"] = { line = 1 } },
     references = { { call_id = "call-1", line = 1 } },
   }
@@ -95,7 +94,7 @@ T["adapter operation"]["refuses chat activity and rechecks after prompts"] = fun
   operation = messages.prepare_tool_result_clear(chat, "call-1")
   assert(operation)
   chat.messages = { { role = "tool", tools = { call_id = "call-1" }, content = "replacement message" } }
-  local changed, _, commit_error = operation.commit("cleared")
+  local changed, commit_error = operation.commit("cleared")
   MiniTest.expect.equality(changed, false)
   assert(commit_error)
   MiniTest.expect.equality(commit_error:find("changed during confirmation", 1, true) ~= nil, true)
@@ -124,7 +123,7 @@ T["workflow"]["mutates tool history only and leaves rendered transcript unchange
   MiniTest.expect.equality(message._meta.index, 3)
   MiniTest.expect.equality(message._meta.cycle, 2)
   MiniTest.expect.equality(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), { "grep_search", "large result" })
-  MiniTest.expect.equality(state.messages, state.chat.messages)
+  MiniTest.expect.equality(state.chat.messages[1], message)
   MiniTest.expect.equality(done, true)
   vim.api.nvim_buf_delete(bufnr, { force = true })
 end

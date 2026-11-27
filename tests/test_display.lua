@@ -75,19 +75,19 @@ local function result_display_harness(estimate, call_id)
     estimated_tokens = estimate,
   }
   local state = {
-    messages = { current },
     references = {
       { call_id = "call-old", name = "grep_search" },
       { call_id = current.call_id, name = "grep_search" },
     },
     float = { bufnr = 1, winnr = 1, call_id = current.call_id, view = "result" },
+    chat = { messages = { current } },
   }
   -- Capture every title emitted by show(), so repeated displays can verify refreshed metadata.
   local titles = {}
   local adapter = {
-    find_tool_result = function(messages, requested_call_id)
+    find_result = function(_, requested_call_id)
       MiniTest.expect.equality(requested_call_id, current.call_id)
-      return messages[1]
+      return state.chat.messages[1]
     end,
   }
   local ui = {
@@ -163,7 +163,7 @@ end
 local function float_state(view, call_id)
   local reference = { call_id = call_id or "call-current", name = "grep_search" }
   return {
-    messages = { { call_id = reference.call_id, name = reference.name, content = "current output" } },
+    chat = { messages = { { call_id = reference.call_id, name = reference.name, content = "current output" } } },
     references = { reference },
     float = { bufnr = 1, winnr = 1, call_id = reference.call_id, view = view },
   }, reference
@@ -175,8 +175,8 @@ T["managed float state"]["reopens in last selected view after float closes"] = f
   local mappings = {}
   local title
   local adapter = {
-    find_tool_call = function() return { call_id = reference.call_id, name = reference.name, arguments = {} } end,
-    find_tool_result = function(messages) return messages[1] end,
+    find_call = function() return { call_id = reference.call_id, name = reference.name, arguments = {} } end,
+    find_result = function(chat) return chat.messages[1] end,
   }
   local ui = {
     create_float = function(_, opts)
@@ -216,7 +216,7 @@ T["managed float state"]["defaults to result view before user changes it"] = fun
   local state, reference = float_state("result")
   state.float = nil
   local adapter = {
-    find_tool_result = function(messages) return messages[1] end,
+    find_result = function(chat) return chat.messages[1] end,
   }
 
   local title = show_new_float(state, reference, adapter, {
@@ -239,8 +239,8 @@ T["managed float state"]["does not clear result while call view is active"] = fu
 
   local ok, err = pcall(function()
     local adapter = {
-      find_tool_call = function() return { call_id = reference.call_id, name = reference.name, arguments = {} } end,
-      find_tool_result = function(messages) return messages[1] end,
+      find_call = function() return { call_id = reference.call_id, name = reference.name, arguments = {} } end,
+      find_result = function(chat) return chat.messages[1] end,
     }
     local ui = {
       create_float = function() return 2, 3 end,
@@ -273,7 +273,7 @@ T["managed float state"]["q reopens the overview when the float came from it"] =
   local reopened = 0
   local closed = 0
   local adapter = {
-    find_tool_result = function(messages) return messages[1] end,
+    find_result = function(chat) return chat.messages[1] end,
   }
   local ui = {
     create_float = function() return 2, 3 end,
@@ -312,7 +312,7 @@ T["managed float state"]["q does not reopen the overview for a plain float"] = f
   local mappings = {}
   local reopened = 0
   local adapter = {
-    find_tool_result = function(messages) return messages[1] end,
+    find_result = function(chat) return chat.messages[1] end,
   }
   local ui = {
     create_float = function() return 2, 3 end,
@@ -349,7 +349,7 @@ T["managed float state"]["resets cursor when changing tools in reused float"] = 
   rawset(vim.api, "nvim_win_set_cursor", function(_, position) cursor = position end)
 
   local ok, err = pcall(function()
-    local adapter = { find_tool_result = function() return { name = "grep_search", content = "output" } end }
+    local adapter = { find_result = function() return { name = "grep_search", content = "output" } end }
     local ui = { update_float = function() return true end }
     local opts = vim.deepcopy(defaults)
     opts.run_command_language = false

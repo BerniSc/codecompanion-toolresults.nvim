@@ -58,7 +58,7 @@ T["dump"]["writes current chat state and buffer lines"] = function()
   local directory, error_message = diagnostics.dump({
     [bufnr] = {
       bufnr = bufnr,
-      messages = messages,
+      chat = { messages = messages },
       references = references,
       tools = { ["call-1"] = references[1] },
     },
@@ -100,12 +100,12 @@ T["dump"]["writes separate snapshots for multiple buffers"] = function()
 
   local directory, error_message = diagnostics.dump({
     [first_bufnr] = {
-      messages = { { role = "user", content = "first" } },
+      chat = { messages = { { role = "user", content = "first" } } },
       references = {},
       tools = {},
     },
     [second_bufnr] = {
-      messages = { { role = "user", content = "second" } },
+      chat = { messages = { { role = "user", content = "second" } } },
       references = {},
       tools = {},
     },
