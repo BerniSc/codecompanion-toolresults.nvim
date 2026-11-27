@@ -49,7 +49,12 @@ For HTTP, outcome is classified on demand by `adapters/messages.lua` (`tool_outc
 - `cancelled` and `rejected`: recognised CodeCompanion invalidation text.
 - `failed`: the first result line starts with `Failed ` or `Failed:` or `Error:`. This is a heuristic and can misclassify a successful result that starts with the same text.
 - `completed`: any other available result.
-- `unavailable`: no current result for the `call_id`.
+- `unavailable`: no result is available or the provider cannot classify the call. HTTP uses this while a result is pending and after context management removes it.
+
+The shared overview model also supports `active` for providers that report an in-progress call, displayed with `~` and grouped after failed calls.
+The current HTTP provider does not distinguish pending calls from other unavailable results.
+The unintegrated ACP adapter maps `pending` and `in_progress` to `active`, and missing or unknown statuses to `unavailable`.
+ACP remains unsupported by the shared UI, so these mappings are not available in supported use.
 
 Rejection and cancellation take precedence over the failure marker.
 Nothing about outcome is stored in extension state.
@@ -59,6 +64,7 @@ It builds row text, argument summaries, and groups from plain data, without wind
 Summaries are display-only; a `run_command` command is shown flattened to one line and truncated by character.
 
 Grouping modes are flat (`none`), outcome (`outcome`, in fixed order), and tool type (`tool`, in first-appearance order).
+Outcome groups order completed, failed, active, rejected, cancelled, then unavailable; groups without calls are omitted.
 Group keys are plain identities, so folds and collapse state can be keyed by them rather than by parsing rendered text.
 Agent-turn grouping is not implemented because current references do not retain call-batch metadata.
 
@@ -145,6 +151,12 @@ lua/codecompanion_toolresults/adapters/providers.lua
 lua/codecompanion_toolresults/adapters/http.lua
   HTTP provider facade over live messages, rendered positions, and optional result clearing
 
+lua/codecompanion_toolresults/adapters/acp.lua
+  ACP root-chat references, transient native lookups, lightweight order, and overview data
+
+lua/codecompanion_toolresults/adapters/acp_positions.lua
+  ACP call-ID resolution through CodeCompanion's live tool-call extmarks
+
 lua/codecompanion_toolresults/adapters/messages.lua
   HTTP message extraction, result lookup, on-demand overview outcome classification, and guarded tool-result mutation
 
@@ -175,14 +187,21 @@ Each reconciliation asks the provider to read CodeCompanion's current live state
 Shared orchestration asks the provider for lightweight references, current rendered positions, call and result lookups, and overview items.
 It does not read or retain provider-specific message payloads itself.
 
-The HTTP provider is the only registered provider at present.
-It delegates message parsing to `adapters/messages.lua` and rendered-line lookup to `adapters/positions.lua`.
+The HTTP provider is the only provider registered for shared UI.
+The ACP adapter has focused root-chat lookup and extmark-position support, but shared ACP display integration is not enabled yet.
+Rendering and lifecycle observation remain pending.
+The ACP adapter reads `tool_calls.acp` directly and retains call IDs and ordering metadata only.
+Calls present at first observation use sorted IDs because the ACP store exposes no chronology metadata.
+New IDs first discovered together are sorted before appending, so this policy does not recover chronology for restored, pre-existing, or batched calls.
+
+The HTTP provider delegates message parsing to `adapters/messages.lua` and rendered-line lookup to `adapters/positions.lua`.
 It resolves data from the chat's current `messages` table on each operation rather than holding a second message-table reference.
 The HTTP clear-result operation mutates the selected CodeCompanion-owned message in place and does not synchronise a copied table back into extension state.
 Chats with an unavailable or unsupported adapter type are not tracked, and the extension reports a warning.
 
-The provider contract is an integration boundary for future backends, not a promise of ACP compatibility.
-An ACP provider will need to resolve its own live state and positions without treating ACP records as HTTP messages.
+The provider contract is an integration boundary for current and future backends, not a promise of ACP runtime compatibility.
+The ACP adapter now resolves its own root-chat state and positions without treating ACP records as HTTP messages.
+Shared ACP rendering and lifecycle observation remain unimplemented.
 
 ## Identity and positions
 

@@ -202,10 +202,13 @@ Each row shows the call number, an outcome glyph, the tool name, and a short arg
 | `!` | Failed | The first result line starts with `Failed `, `Failed:`, or `Error:`. |
 | `×` | Rejected | CodeCompanion reports that you rejected the call. |
 | `-` | Cancelled | CodeCompanion reports that the call was cancelled. |
-| `?` | Unavailable | No current result exists, for example while the call runs or after context management removed it. |
+| `~` | Active | The provider reports that the call is still running. |
+| `?` | Unavailable | No result is available or the provider cannot classify the call. HTTP shows pending results this way; the unintegrated ACP adapter maps missing or unknown state this way. |
 
 Rejected and cancelled take precedence over the failed marker.
 The failed marker is a heuristic, so a successful result whose first line starts with the same text shows as failed.
+The overview model supports active calls, but the currently supported HTTP provider does not report that outcome.
+The unintegrated ACP adapter maps `pending` and `in_progress` to active, but ACP chats remain unsupported and do not produce active rows in supported use.
 
 Press `<M-g>` to group the rows:
 

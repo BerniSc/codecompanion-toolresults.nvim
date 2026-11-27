@@ -83,8 +83,14 @@ Outcome glyphs ~
         "Error:". This is a heuristic.
     ×   Rejected. CodeCompanion reports that the call was rejected.
     -   Cancelled. CodeCompanion reports that the call was cancelled.
-    ?   Unavailable. No current result exists, for example while the call runs
-        or after context management removed it.
+    ~   Active. The provider reports that the call is still running.
+    ?   Unavailable. No result is available or the provider cannot classify
+        the call. HTTP shows pending results this way; the unintegrated ACP
+        adapter maps missing or unknown state this way.
+
+The overview model supports active calls, but the currently supported HTTP
+provider does not report this outcome. The unintegrated ACP adapter maps
+"pending" and "in_progress" to active, but ACP chats are not yet supported.
 
 Rejected and cancelled take precedence over the failed marker.
 
@@ -92,7 +98,9 @@ Grouping ~
 Press `<M-g>` to choose a grouping:
 
     No grouping   Calls in chat order.
-    Outcome       Calls grouped in a fixed order, from completed to unavailable.
+    Outcome       Calls grouped in this order: completed, failed, active,
+                  rejected, cancelled, then unavailable. Empty groups are
+                  omitted.
     Tool type     Calls grouped by tool name, in order of first appearance.
 
 Each group has a manual fold. Use standard Vim fold commands, such as `za`, to
