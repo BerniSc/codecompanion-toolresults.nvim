@@ -11,6 +11,13 @@
 ---| "cancelled"
 ---| "unavailable"
 
+---@class CodeCompanionToolresults.CodeCompanionChat
+---@field adapter? { type?: string } Provider selection metadata.
+---@field messages? table[] Current HTTP message stack; ACP providers use their own live state.
+---@field tool_calls? table ACP tool-call store, when present.
+---@field current_request? any Current request marker used by HTTP clear safety checks.
+---@field tool_orchestrator? any Active tool orchestrator used by HTTP clear safety checks.
+
 ---@class CodeCompanionToolresults.ToolReference
 ---@field call_id string? Stable CodeCompanion tool-call identifier.
 ---@field name string? Tool name.
@@ -40,10 +47,10 @@
 
 ---@class CodeCompanionToolresults.ToolResultClearOperation
 ---@field name string Display name for confirmation prompt.
----@field commit fun(content: string): boolean, CodeCompanion.Chat.Messages?, string? Commit the clear; return success, current raw messages, or error.
+---@field commit fun(content: string): boolean, string? Commit the clear; return success or error. CodeCompanion chat messages mutate in place.
 
 ---@class CodeCompanionToolresults.RedactionAdapter
----@field prepare_tool_result_clear fun(chat: table, call_id: string): CodeCompanionToolresults.ToolResultClearOperation?, string? Prepare a validated clear operation against the live chat.
+---@field prepare_tool_result_clear fun(chat: CodeCompanionToolresults.CodeCompanionChat, call_id: string): CodeCompanionToolresults.ToolResultClearOperation?, string? Prepare a validated clear operation against the live chat.
 
 ---@class CodeCompanionToolresults.RedactionDeps
 ---@field select fun(items: string[], opts: table, callback: fun(choice: string?))? Override vim.ui.select for the clear workflow.
@@ -171,11 +178,24 @@
 ---@field layout CodeCompanionToolresults.OverviewLayout
 ---@field closed? boolean
 
+---@class CodeCompanionToolresults.Provider
+---@field id string Provider identifier.
+---@field list_references fun(chat: CodeCompanionToolresults.CodeCompanionChat): CodeCompanionToolresults.ToolReference[]
+---@field find_lines fun(chat: CodeCompanionToolresults.CodeCompanionChat, bufnr: integer, references: CodeCompanionToolresults.ToolReference[]): table<string, integer>, table
+---@field find_call fun(chat: CodeCompanionToolresults.CodeCompanionChat, call_id: string): CodeCompanionToolresults.ToolCall?
+---@field find_result fun(chat: CodeCompanionToolresults.CodeCompanionChat, call_id: string): CodeCompanionToolresults.ToolResult?
+---@field overview_items fun(chat: CodeCompanionToolresults.CodeCompanionChat, summarise: CodeCompanionToolresults.OverviewSummariser): CodeCompanionToolresults.OverviewItem[]
+---@field prepare_tool_result_clear? fun(chat: CodeCompanionToolresults.CodeCompanionChat, call_id: string): CodeCompanionToolresults.ToolResultClearOperation?, string?
+---@field remove_run_command_prefix? fun(content: string, command: string): string
+---@field normalize_result? fun(content: any): string, table
+---@field diagnostic_snapshot? fun(chat: CodeCompanionToolresults.CodeCompanionChat): table
+
 ---@class CodeCompanionToolresults.ChatState
 ---@field bufnr integer
----@field chat table CodeCompanion chat instance.
+---@field chat CodeCompanionToolresults.CodeCompanionChat CodeCompanion chat instance.
+---@field provider CodeCompanionToolresults.Provider Selected provider adapter for current chat.
+---@field provider_id string Provider identifier.
 ---@field references CodeCompanionToolresults.ToolReference[] Lightweight tool references.
----@field messages CodeCompanion.Chat.Messages Current CodeCompanion message table.
 ---@field tools table<string, CodeCompanionToolresults.ToolReference> References indexed by call_id.
 ---@field float CodeCompanionToolresults.FloatState?
 ---@field view? "call"|"result" Last successfully displayed view; defaults to result and survives float closure for this chat.

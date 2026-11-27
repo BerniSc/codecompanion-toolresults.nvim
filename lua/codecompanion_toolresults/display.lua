@@ -141,7 +141,7 @@ end
 ---@param title string Float title.
 ---@param opts table Extension options.
 ---@param ui table UI adapter.
----@param adapter table Message adapter.
+---@param adapter table Provider adapter.
 ---@param reconcile fun(chat_state: CodeCompanionToolresults.ChatState) Reconcile current CodeCompanion messages.
 ---@param renderer_context table Display dependencies, including "open_overview" for overview returns.
 ---@param return_to_overview? boolean Whether "q" and "<Esc>" reopen the originating overview.
@@ -261,7 +261,7 @@ end
 ---@param reference CodeCompanionToolresults.ToolReference Tool reference.
 ---@param index integer Reference index.
 ---@param opts table Extension options.
----@param adapter table Message adapter.
+---@param adapter table Provider adapter.
 ---@param ui table UI adapter.
 ---@param reconcile fun(chat_state: table) Reconcile current chat messages.
 ---@param renderer_context table Renderer and display dependencies.
@@ -273,9 +273,9 @@ function M.show(chat_state, reference, index, opts, adapter, ui, reconcile, rend
   local lines
   local title
   -- Resolve the current result once per display by call_id, so checkpoint/context-edit metadata refreshes with content.
-  local result = adapter.find_tool_result(chat_state.messages, reference.call_id)
+  local result = adapter.find_result(chat_state.chat, reference.call_id)
   if view == "call" then
-    local call = adapter.find_tool_call(chat_state.messages, reference.call_id)
+    local call = adapter.find_call(chat_state.chat, reference.call_id)
     if not call then
       vim.notify(string.format("Tool call unavailable: %s (%s)", reference.name or "?", tostring(reference.call_id or "?")), vim.log.levels.WARN)
       return false

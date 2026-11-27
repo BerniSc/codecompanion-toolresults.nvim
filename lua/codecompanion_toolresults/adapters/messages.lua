@@ -344,8 +344,8 @@ end
 ---CodeCompanion message identified by tool call ID for clearing.
 ---The operation retains the original message for in-place mutation; it does not copy result content.
 ---Its commit method rechecks chat activity and message identity after asynchronous prompts.
----On success, commit returns the chat's current messages table.
----@param chat table CodeCompanion chat instance.
+---The selected message is mutated in place in CodeCompanion's live message table; no replacement table is returned.
+---@param chat CodeCompanionToolresults.CodeCompanionChat CodeCompanion chat instance.
 ---@param call_id string Tool-call identifier.
 ---@return CodeCompanionToolresults.ToolResultClearOperation? operation
 ---@return string? error
@@ -390,12 +390,12 @@ function M.prepare_tool_result_clear(chat, call_id)
   local function commit(content)
     -- Prompts are asynchronous. Refuse stale selection or a chat that became active meanwhile.
     if chat.current_request or chat.tool_orchestrator then
-      return false, nil, "Chat activity started during confirmation; nothing was changed."
+      return false, "Chat activity started during confirmation; nothing was changed."
     end
 
     local current, find_error = find_unique_tool_result_message()
     if not current or current ~= selected then
-      return false, nil, find_error or "Tool result changed during confirmation; nothing was changed."
+      return false, find_error or "Tool result changed during confirmation; nothing was changed."
     end
 
     -- Checkpoints report a chat-wide estimate; they do not refresh each message's estimate after this mutation.
@@ -416,7 +416,8 @@ function M.prepare_tool_result_clear(chat, call_id)
     -- session serialiser preserves only `_meta.tag`, so this flag is lost when a session is restored.
     -- TODO: Ask Oli Morris for a supported way to persist namespaced plugin metadata.
     current._meta.codecompanion_toolresults_cleared = true
-    return true, chat.messages
+    -- The selected message belongs to CodeCompanion's live message table; in-place mutation needs no state sync.
+    return true
   end
 
   return {

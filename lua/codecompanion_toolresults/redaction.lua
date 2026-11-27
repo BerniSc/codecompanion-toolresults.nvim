@@ -66,15 +66,14 @@ function M.start(chat_state, call_id, adapter, deps, on_done)
       end
 
       -- Prompts are asynchronous. The adapter rechecks chat activity and the selected message before mutating.
-      local changed, current_messages, commit_error = operation.commit(replacement)
+      local changed, commit_error = operation.commit(replacement)
       if not changed then
         report(commit_error, vim.log.levels.WARN)
         complete(false)
         return
       end
 
-      assert(current_messages, "successful clear operation must return current messages")
-      chat_state.messages = current_messages
+      assert(changed, "successful clear operation must report success")
       report("Tool result cleared from future local context. Other chat messages may still contain its output.", vim.log.levels.WARN)
       complete(true)
     end)

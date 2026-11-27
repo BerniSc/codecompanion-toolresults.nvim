@@ -1,7 +1,6 @@
 local M = {}
 
-local adapter = require("codecompanion_toolresults.adapters.messages")
-local position_adapter = require("codecompanion_toolresults.adapters.positions")
+local providers = require("codecompanion_toolresults.adapters.providers")
 local diagnostics = require("codecompanion_toolresults.diagnostics")
 local ui = require("codecompanion_toolresults.adapters.ui")
 
@@ -141,8 +140,8 @@ end
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@return nil
 local function refresh_positions(chat_state)
-  local lines_by_call_id, position_diagnostics = position_adapter.find_tool_lines(
-    chat_state.bufnr, chat_state.references, chat_state.chat)
+  local lines_by_call_id, position_diagnostics = chat_state.provider.find_lines(
+    chat_state.chat, chat_state.bufnr, chat_state.references)
 
   for call_id, reference in pairs(chat_state.tools) do
     reference.line = lines_by_call_id[call_id]
@@ -166,7 +165,7 @@ end
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 ---@return nil
 local function reconcile_messages(chat_state)
-  local references = adapter.tool_references(chat_state.messages)
+  local references = chat_state.provider.list_references(chat_state.chat)
   local tools_by_call_id = {}
 
   for _, reference in ipairs(references) do
@@ -302,17 +301,19 @@ local open_overview
 ---@return CodeCompanionToolresults.RendererContext
 local function make_renderer_context(chat_state)
   return {
-    remove_run_command_prefix = adapter.remove_run_command_prefix,
-    normalize_result = adapter.normalize_result,
+    remove_run_command_prefix = chat_state.provider.remove_run_command_prefix,
+    normalize_result = chat_state.provider.normalize_result,
     find_tool_call = function(call_id)
-      return adapter.find_tool_call(chat_state.messages, call_id)
+      return chat_state.provider.find_call(chat_state.chat, call_id)
     end,
     open_overview = function(current_state)
       open_overview(current_state)
     end,
     clear_result = function(current_state, call_id, on_done)
       reconcile_messages(current_state)
-      redaction.start(current_state, call_id, adapter, nil, on_done)
+      if current_state.provider.prepare_tool_result_clear then
+        redaction.start(current_state, call_id, current_state.provider, nil, on_done)
+      end
     end,
   }
 end
@@ -336,7 +337,7 @@ local function refresh_managed_float(chat_state)
     return
   end
 
-  display.show(chat_state, chat_state.references[index], index, M._opts, adapter, ui, reconcile_messages,
+  display.show(chat_state, chat_state.references[index], index, M._opts, chat_state.provider, ui, reconcile_messages,
                make_renderer_context(chat_state), float.view, float.return_to_overview)
 end
 
@@ -385,7 +386,7 @@ local function display_tool_reference(chat_state, hovered_call_id)
 
   assert(index, "toolreference lookup returned no index")
   -- Resolve and render the current result through the display module.
-  display.show(chat_state, reference, index, M._opts, adapter, ui, reconcile_messages, make_renderer_context(chat_state))
+  display.show(chat_state, reference, index, M._opts, chat_state.provider, ui, reconcile_messages, make_renderer_context(chat_state))
 end
 
 ---Show the hovered tool result in a transient preview without focusing it.
@@ -401,7 +402,7 @@ local function preview_tool_reference(chat_state, mouse)
     return
   end
 
-  local result = adapter.find_tool_result(chat_state.messages, reference.call_id)
+  local result = chat_state.provider.find_result(chat_state.chat, reference.call_id)
   if not result then
     chat_state.hovered_call_id = nil
     hover.close(chat_state)
@@ -458,7 +459,7 @@ local function inspect_call(chat_state, call_id)
     return
   end
 
-  display.show(chat_state, reference, index, M._opts, adapter, ui, reconcile_messages,
+  display.show(chat_state, reference, index, M._opts, chat_state.provider, ui, reconcile_messages,
                make_renderer_context(chat_state), nil, true)
 end
 
@@ -471,7 +472,7 @@ local function preview_call(chat_state, call_id, anchor)
   reconcile_messages(chat_state)
 
   local reference = chat_state.tools[call_id]
-  local result = adapter.find_tool_result(chat_state.messages, call_id)
+  local result = chat_state.provider.find_result(chat_state.chat, call_id)
   if not reference or not result then
     vim.notify("Tool result unavailable: no result for this call in the current chat.", vim.log.levels.WARN)
     return
@@ -496,13 +497,12 @@ end
 ---@param chat_state CodeCompanionToolresults.ChatState Per-chat extension state.
 open_overview = function(chat_state)
   close_overview(chat_state)
-  -- Fall back to the last messages seen by the callbacks if the chat has none, so reconcile never receives nil.
-  chat_state.messages = chat_state.chat.messages or chat_state.messages
+  -- Re-read provider-owned live state; callbacks are refresh signals, not the source of truth.
   reconcile_messages(chat_state)
   chat_state.overview_state = chat_state.overview_state or {}
 
   chat_state.overview = overview.open({
-    items = adapter.overview_items(chat_state.messages, overview_model.summary),
+    items = chat_state.provider.overview_items(chat_state.chat, overview_model.summary),
     state = chat_state.overview_state,
     ui = ui,
     keymaps = M._opts.keymaps.overview,
@@ -544,12 +544,19 @@ local function attach_to_chat(chat, bufnr)
     return
   end
 
+  local provider, provider_error = providers.for_chat(chat)
+  if not provider then
+    notify(provider_error .. "; tool result tracking skipped", vim.log.levels.WARN)
+    return
+  end
+
   ---@type CodeCompanionToolresults.ChatState
   local chat_state = {
     bufnr = bufnr,
     chat = chat,
+    provider = provider,
+    provider_id = provider.id,
     references = {},
-    messages = chat.messages or {},
     tools = {},
     float = nil,
     hover_preview = nil,
@@ -574,10 +581,8 @@ local function attach_to_chat(chat, bufnr)
   -- Reconcile immediately. Chats may be restored or attached after messages exist.
   reconcile_messages(chat_state)
 
-  -- Record lightweight observation metadata before tool output enters the chat.
-  -- This however does not include the toolresult yet, we get this via "on_checkpoint"
-  chat:add_callback("on_tool_output", function(current_chat)
-    chat_state.messages = current_chat.messages
+  -- Observe tool output so scheduled reconciliation can see its result after insertion.
+  chat:add_callback("on_tool_output", function()
 
     -- on_tool_output runs before CodeCompanion inserts the result of the call. Schedule reconciliation 
     -- so partial results become visible before the full batch finishes and triggers on_checkpoint.
@@ -607,9 +612,7 @@ local function attach_to_chat(chat, bufnr)
         return
       end
       -- CodeCompanion runs context management after checkpoint callbacks return.
-      -- Read messages then, so an open float sees any in-place edits and updated estimates.
-      -- Same fallback as open_overview: keep the last known messages if the chat has none.
-      chat_state.messages = chat.messages or chat_state.messages
+      -- Reconciliation reads the provider's live source state on every pass.
       reconcile_messages(chat_state)
       refresh_managed_float(chat_state)
       dump_buffer(chat_state)

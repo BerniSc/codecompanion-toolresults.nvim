@@ -87,8 +87,12 @@ function M.dump(state_by_bufnr, opts)
     end
 
     local buffer_metadata, buffer_lines = buffer_snapshot(bufnr)
+    local message_snapshot = chat_state.chat and chat_state.chat.messages or {}
+    if chat_state.provider and chat_state.provider.diagnostic_snapshot then
+      message_snapshot = chat_state.provider.diagnostic_snapshot(chat_state.chat)
+    end
     local files = {
-      { "messages.json", chat_state.messages },
+      { "messages.json", message_snapshot },
       { "references.json", chat_state.references },
       { "tools.json", chat_state.tools },
       { "buffer-metadata.json", buffer_metadata },
