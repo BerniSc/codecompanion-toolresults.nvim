@@ -19,15 +19,17 @@ M.outcome_labels = {
   failed = "Failed",
   rejected = "Rejected",
   cancelled = "Cancelled",
+  active = "Active",
   unavailable = "Unavailable",
 }
 
 -- Display order for outcome groups. Only groups with calls appear.
-local outcome_order = { "completed", "failed", "rejected", "cancelled", "unavailable" }
+local outcome_order = { "completed", "failed", "active", "rejected", "cancelled", "unavailable" }
 
 local outcome_glyphs = {
   completed = "✓",
   failed = "!",
+  active = "~",
   rejected = "×",
   cancelled = "-",
   unavailable = "?",

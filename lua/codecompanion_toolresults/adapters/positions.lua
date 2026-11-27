@@ -58,7 +58,7 @@ end
 ---@param references CodeCompanionToolresults.ToolReference[]
 ---@param chat table CodeCompanion chat instance.
 ---@return table<string, integer> positions
----@return table diagnostics
+---@return CodeCompanionToolresults.PositionDiagnostics diagnostics
 local function find_extmark_tool_lines(bufnr, references, chat)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return {}, { invalid_buffer = true, unresolved = references or {}, ambiguous = 0 }
@@ -141,7 +141,7 @@ end
 ---@param chat table CodeCompanion chat instance.
 ---@param version? string Version override for tests.
 ---@return table<string, integer> positions
----@return table diagnostics
+---@return CodeCompanionToolresults.PositionDiagnostics diagnostics
 function M.find_tool_lines(bufnr, references, chat, version)
   version = version or codecompanion_version()
   local has_tool_call_marks = type(chat) == "table" and type(chat.tool_call_marks) == "table"

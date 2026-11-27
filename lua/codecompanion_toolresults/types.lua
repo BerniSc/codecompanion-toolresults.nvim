@@ -7,6 +7,7 @@
 ---@alias CodeCompanionToolresults.ToolOutcome
 ---| "completed"
 ---| "failed"
+---| "active"
 ---| "rejected"
 ---| "cancelled"
 ---| "unavailable"
@@ -26,7 +27,10 @@
 ---@field message_id number? CodeCompanion message identifier; secondary to call_id.
 ---@field message_index integer? Current message index; not stable across context management.
 ---@field line integer? Current rendered chat-buffer line; presentation state only.
----@field status CodeCompanionToolresults.Status Whether the tool result is available or was invalidated by rejection/cancellation.
+---@field status CodeCompanionToolresults.Status Distinguishes available results from invalidated rejection/cancellation results.
+---@field provider_status? string Native provider state such as ACP "pending" or "in_progress".
+---@field outcome? CodeCompanionToolresults.ToolOutcome Provider-classified overview state.
+---@field provider? string Provider identifier.
 
 ---@class CodeCompanionToolresults.ToolResult
 ---@field call_id string Stable CodeCompanion tool-call identifier.
@@ -42,6 +46,16 @@
 ---@field call_id string Stable CodeCompanion tool-call identifier.
 ---@field name string? Tool name.
 ---@field arguments any Current CodeCompanion call arguments, returned transiently.
+
+---@class CodeCompanionToolresults.AcpToolCall
+---@field toolCallId string Native ACP call identity.
+---@field status? string Native ACP lifecycle state.
+---@field kind? string Native tool category.
+---@field title? string Provider-supplied call title.
+---@field rawInput? any Current native call input, returned transiently.
+---@field rawOutput? any Current native output, returned transiently.
+---@field content? table[] Current typed ACP content blocks, returned transiently.
+---@field locations? table[] Current native locations, returned transiently.
 
 -- TODO: Give other ad-hoc test dependency tables similarly focused types when their contracts need clarification.
 
@@ -178,12 +192,18 @@
 ---@field layout CodeCompanionToolresults.OverviewLayout
 ---@field closed? boolean
 
+---@class CodeCompanionToolresults.PositionDiagnostics
+---@field invalid_buffer? boolean Whether target buffer is invalid.
+---@field unresolved CodeCompanionToolresults.ToolReference[] References without a unique current line.
+---@field ambiguous? integer Number of references rejected due to conflicting line positions; absent for legacy text lookup.
+---@field unsupported_version? string CodeCompanion version when position lookup cannot select a supported strategy.
+
 ---@class CodeCompanionToolresults.Provider
 ---@field id string Provider identifier.
 ---@field list_references fun(chat: CodeCompanionToolresults.CodeCompanionChat): CodeCompanionToolresults.ToolReference[]
----@field find_lines fun(chat: CodeCompanionToolresults.CodeCompanionChat, bufnr: integer, references: CodeCompanionToolresults.ToolReference[]): table<string, integer>, table
----@field find_call fun(chat: CodeCompanionToolresults.CodeCompanionChat, call_id: string): CodeCompanionToolresults.ToolCall?
----@field find_result fun(chat: CodeCompanionToolresults.CodeCompanionChat, call_id: string): CodeCompanionToolresults.ToolResult?
+---@field find_lines fun(chat: CodeCompanionToolresults.CodeCompanionChat, bufnr: integer, references: CodeCompanionToolresults.ToolReference[]): table<string, integer>, CodeCompanionToolresults.PositionDiagnostics
+---@field find_call fun(chat: CodeCompanionToolresults.CodeCompanionChat, call_id: string): CodeCompanionToolresults.ToolCall|CodeCompanionToolresults.AcpToolCall|nil
+---@field find_result fun(chat: CodeCompanionToolresults.CodeCompanionChat, call_id: string): CodeCompanionToolresults.ToolResult|CodeCompanionToolresults.AcpToolCall|nil
 ---@field overview_items fun(chat: CodeCompanionToolresults.CodeCompanionChat, summarise: CodeCompanionToolresults.OverviewSummariser): CodeCompanionToolresults.OverviewItem[]
 ---@field prepare_tool_result_clear? fun(chat: CodeCompanionToolresults.CodeCompanionChat, call_id: string): CodeCompanionToolresults.ToolResultClearOperation?, string?
 ---@field remove_run_command_prefix? fun(content: string, command: string): string
