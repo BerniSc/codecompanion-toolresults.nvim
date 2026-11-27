@@ -9,15 +9,17 @@ This extension provides an explicit way to inspect a current tool result without
 The extension is separate from CodeCompanion.
 CodeCompanion remains responsible for message history, context editing, compaction, and rendering.
 This plugin stores references and presentation metadata only.
+A provider boundary keeps backend-specific tool-state access out of shared UI modules.
+HTTP is currently the only provider; ACP support is not implemented.
 
 ## Current interaction
 
-1. CodeCompanion creates chat buffer.
-2. The extension attaches callbacks to that chat.
-3. `on_tool_output` updates the tracked message reference and schedules reconciliation.
-4. Scheduled reconciliation can see results that have finished before the whole tool batch is complete.
-5. `on_checkpoint` reconciles the complete current message stack.
-6. Tool messages are identified by `tools.call_id`.
+1. CodeCompanion creates a chat buffer.
+2. The extension selects a provider from the chat's adapter type and attaches to the chat.
+3. The HTTP provider observes `on_tool_output` and schedules reconciliation.
+4. Scheduled reconciliation re-reads the current chat through the provider and can see results that have finished before the whole tool batch is complete.
+5. `on_checkpoint` reconciles the complete current message stack through the HTTP provider.
+6. HTTP tool messages are identified by `tools.call_id`.
 7. The rendered chat buffer is scanned for current tool-label lines.
 8. The user presses `gT`; configured `cursor.mode` selects a reference from the current cursor line and refreshed rendered positions (`exact` by default, or opt-in `nearest`, `above`, or `below`).
 9. The extension resolves the current result by `call_id` and opens it in a CodeCompanion-styled floating window.
@@ -40,9 +42,9 @@ The overview's `K` preview reuses the same module with an anchor beside the sele
 
 `gO` opens one chronological list of the current chat's tool calls.
 Each row shows the ordinal, an outcome glyph, the tool name, and a short argument summary.
-The overview stores displayed `call_id` values only; outcome, summary, and arguments are looked up from current messages when rows are built.
+The overview stores displayed `call_id` values only; outcome, summary, and arguments are supplied by the selected provider when rows are built.
 
-Outcome is classified on demand by `adapters/messages.lua` (`tool_outcome`) from the current result for a `call_id`:
+For HTTP, outcome is classified on demand by `adapters/messages.lua` (`tool_outcome`) from the current result for a `call_id`:
 
 - `cancelled` and `rejected`: recognised CodeCompanion invalidation text.
 - `failed`: the first result line starts with `Failed ` or `Failed:` or `Error:`. This is a heuristic and can misclassify a successful result that starts with the same text.
@@ -62,7 +64,7 @@ Agent-turn grouping is not implemented because current references do not retain 
 
 The overview window is implemented in `overview.lua`.
 It takes plain items, a state table owned by the chat, a UI adapter, keymaps, and callbacks.
-It never reads CodeCompanion messages.
+It does not access CodeCompanion messages or provider-specific state.
 
 - `gO` (`keymaps.chat.overview`) opens one managed overview per chat.
 - `<CR>` opens the selected result in the managed result float; `q` and `<Esc>` in that float reopen the overview.
@@ -83,8 +85,8 @@ The extension keeps per-chat state containing:
 
 - chat buffer number
 - chat object
-- current message table reference
-- tool references
+- selected provider and provider identifier
+- lightweight tool references
 - current rendered line positions
 - transient hover preview handles and debounce timer, while preview is active
 - overview handle, overview preview handle, and overview state (selected call ID, grouping, collapsed groups)
@@ -103,7 +105,7 @@ lua/codecompanion_toolresults/init.lua
   Lifecycle wiring, state, keymap, orchestration
 
 lua/codecompanion_toolresults/display.lua
-  Result/call lookup handoff, managed float lifecycle, cursor placement, view toggle, and float-local mappings
+  Provider-neutral result/call lookup handoff, managed float lifecycle, cursor placement, view toggle, and float-local mappings
 
 lua/codecompanion_toolresults/redaction.lua
   Cancellable clear workflow, reason input, confirmation, and completion handling
@@ -137,15 +139,21 @@ lua/codecompanion_toolresults/types.lua
 
 ### ADAPTERS - directly reference codecompanion core logic that is not necessary set in stone
 
+lua/codecompanion_toolresults/adapters/providers.lua
+  Provider selection based on the CodeCompanion adapter type
+
+lua/codecompanion_toolresults/adapters/http.lua
+  HTTP provider facade over live messages, rendered positions, and optional result clearing
+
 lua/codecompanion_toolresults/adapters/messages.lua
-  CodeCompanion message extraction, result lookup, on-demand overview outcome classification, and guarded tool-result mutation
+  HTTP message extraction, result lookup, on-demand overview outcome classification, and guarded tool-result mutation
 
 lua/codecompanion_toolresults/adapters/ui.lua
   CodeCompanion UI integration and floating-window configuration
 
 ```
 
-The `init.lua` orchestrator resolves a hovered label to its current result by `call_id`, invokes the renderer, and passes the resulting lines to `hover.lua`.
+The `init.lua` orchestrator asks the selected provider to resolve a hovered reference by `call_id`, invokes the renderer, and passes the resulting lines to `hover.lua`.
 The hover module owns mouse handling and transient preview windows; it does not retain tool output as plugin history.
 Renderers only convert result data to display lines and do not manage hover state or floats.
 The old `insert_edit_into_file` API takes `filepath` and an `edits` array of `oldText`/`newText` pairs, each with a `replaceAll` flag; it supports multiple edits per call and flexible matching.
@@ -154,13 +162,34 @@ Both tools review full-file changes, but stored tool arguments do not include th
 The v20 `create_file` renderer displays supplied `content` as an added-file patch.
 All renderers resolve arguments transiently by `call_id`; when unavailable, they show only the result summary.
 
-The `_extensions` module stays thin. The plugin namespace contains feature logic. CodeCompanion-specific assumptions stay under `adapters/` where possible.
+The `_extensions` module stays thin.
+The plugin namespace contains feature logic.
+CodeCompanion-specific assumptions stay under `adapters/` where possible.
+
+## Provider boundary
+
+`adapters/providers.lua` selects a provider from `chat.adapter.type` when the extension attaches to a chat.
+The selected provider stays with that chat's extension state.
+Callbacks signal when the extension should reconcile state; they do not supply or replace the source of truth.
+Each reconciliation asks the provider to read CodeCompanion's current live state.
+Shared orchestration asks the provider for lightweight references, current rendered positions, call and result lookups, and overview items.
+It does not read or retain provider-specific message payloads itself.
+
+The HTTP provider is the only registered provider at present.
+It delegates message parsing to `adapters/messages.lua` and rendered-line lookup to `adapters/positions.lua`.
+It resolves data from the chat's current `messages` table on each operation rather than holding a second message-table reference.
+The HTTP clear-result operation mutates the selected CodeCompanion-owned message in place and does not synchronise a copied table back into extension state.
+Chats with an unavailable or unsupported adapter type are not tracked, and the extension reports a warning.
+
+The provider contract is an integration boundary for future backends, not a promise of ACP compatibility.
+An ACP provider will need to resolve its own live state and positions without treating ACP records as HTTP messages.
 
 ## Identity and positions
 
-`call_id` is the primary tool identity because the tool-call message and tool-result message share it.
+`call_id` is the primary tool identity for HTTP because the tool-call message and tool-result message share it.
+The selected provider maps its native call identifier to this shared identity.
 
-Message `_meta.id` is secondary metadata (fallback not yet automatical).
+For HTTP, message `_meta.id` is secondary metadata (fallback not yet automated).
 Message indexes are not stable because tool messages may not have an index and context management can change the message stack.
 
 Rendered line numbers are presentation state only. They must be recalculated after rendering changes. They are never used as tool identity.
@@ -194,7 +223,7 @@ Coupling is isolated to one adapter module so future changes remain localized.
 
 ## Context management
 
-The extension follows CodeCompanion's current message state:
+For HTTP chats, the extension follows CodeCompanion's current message state:
 
 - Current tool result: display current content.
 - Result replaced by a placeholder: display current placeholder content.
@@ -285,7 +314,8 @@ Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanio
 
 - Rendering detection depends on visible tool-label lines.
 - `nearest` cursor selection can choose an unintended result if cursor moves far from the intended tool label; exact selection remains the default.
-- Tool result message structure is CodeCompanion-version-sensitive.
+- The HTTP tool result message structure is CodeCompanion-version-sensitive.
+- Adding another provider requires its own lookup, rendering, and lifecycle integration.
 - `on_tool_output` runs before CodeCompanion inserts the result. Scheduled reconciliation reduces this gap but is not an exact post-insert event.
 - Exact per-tool post-insert observation would require a public CodeCompanion callback exposing the completed call ID or message.
 - The floating-window helper is an internal CodeCompanion API, but mapped via adapter.
@@ -302,7 +332,7 @@ Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanio
 - Extension skeleton and thin CodeCompanion bridge.
 - Per-chat lifecycle tracking.
 - Scheduled partial-result reconciliation without output storage.
-- Adapter extraction and `call_id` result lookup.
+- HTTP provider extraction and `call_id` result lookup behind the provider contract.
 - Rendered line tracking and configurable `gT` lookup, including opt-in exact/nearest/above/below cursor selection.
 - Configurable next/previous navigation with `gtn` and `gtp`.
 - CodeCompanion-styled result float.
@@ -315,7 +345,7 @@ Renderers do not manage floats, keymaps, navigation, chat state, or CodeCompanio
 ### Later work
 
 1. Test long output, repeated tools, multiple chats, cancellation, and unavailable results.
-2. Add adapter tests for reference extraction and result lookup.
+2. Add provider-specific tests for reference extraction and result lookup.
 3. Add position tests for repeated tool names and missing rendered labels.
 4. Refresh positions after relevant buffer changes, not only checkpoints.
 5. Switch to better tool detection and extmark-based referencing for automatic tracking in the buffer.

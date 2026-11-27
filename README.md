@@ -20,6 +20,7 @@ https://github.com/user-attachments/assets/44e57528-a82c-41dc-b91d-94be22062c73
 ## Compatibility and feedback
 
 This plugin is built and tested mainly around CodeCompanion v19 and v20, Neovim 0.12, and CodeCompanion's HTTP adapters.
+ACP chats are not supported yet.
 I have not verified how it behaves with other versions or workflows.
 If you try it with a different setup, I’d be glad to hear how it goes.
 A GitHub star is a helpful signal that others find the plugin useful.
